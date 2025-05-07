@@ -2,3 +2,4 @@ replays/
 SmashIso.nkit.iso
 output.csv
 data/
+__pycache__/
