@@ -46,7 +46,7 @@ def unpack_and_send(controller, action_tensor):
        main_x, main_y, c_x, c_y, raw_x, raw_y, l_shldr, r_shldr]
     """
     # First, clear last frame’s inputs
-    #controller.release_all()
+    controller.release_all()
 
     # Booleans
     #print("ACTION",action_tensor,"\n")
@@ -57,8 +57,12 @@ def unpack_and_send(controller, action_tensor):
         melee.enums.Button.BUTTON_Y, melee.enums.Button.BUTTON_Z #, melee.enums.Button.BUTTON_START
     ]
     for i, b in enumerate(btns):
-        if action_tensor[i].item()> 0.5:
+        # if(b==melee.enums.Button.BUTTON_L or b==melee.enums.Button.BUTTON_R):
+        #     continue
+        if action_tensor[i].item() >0.5:
             controller.press_button(b)
+            # if(b == melee.enums.Button.BUTTON_A):
+            #     print("A")
 
     #Analog sticks
     main_x, main_y = action_tensor[11].item(), action_tensor[12].item()
@@ -84,7 +88,8 @@ class PolicyNet(nn.Module):
 
 # Load the trained model
 model = PolicyNet(obs_dim=54, act_dim=17)
-model.load_state_dict(torch.load("trained_policy.pth"))
+state_dict = torch.load("trained_policy.pth", map_location="cpu")
+model.load_state_dict(state_dict)
 model.eval()
 
 def policy(obs):
