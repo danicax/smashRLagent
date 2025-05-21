@@ -35,6 +35,16 @@ from util import make_obs
         ], dtype=torch.float32)
 """
 
+def policy(obs):
+    """
+    Dummy policy function that returns a random action tensor.
+    Replace this with your actual policy model.
+    """
+    # Assuming the action space is 18-dimensional
+    action_dim = 17
+    act = torch.rand(action_dim)
+    return act  # Random action for demonstration purposes
+
 def unpack_and_send(controller, action_tensor):
     """
     action_tensor: FloatTensor of shape [act_dim] in the same order you trained on:
@@ -43,9 +53,10 @@ def unpack_and_send(controller, action_tensor):
        main_x, main_y, c_x, c_y, raw_x, raw_y, l_shldr, r_shldr]
     """
     # First, clear last frame’s inputs
-    controller.release_all()
+    #controller.release_all()
 
     # Booleans
+    #print("ACTION",action_tensor,"\n")
     btns = [
         melee.enums.Button.BUTTON_A, melee.enums.Button.BUTTON_B, melee.enums.Button.BUTTON_D_DOWN,
         melee.enums.Button.BUTTON_D_LEFT, melee.enums.Button.BUTTON_D_RIGHT,melee.enums. Button.BUTTON_D_UP,
@@ -53,10 +64,10 @@ def unpack_and_send(controller, action_tensor):
         melee.enums.Button.BUTTON_Y, melee.enums.Button.BUTTON_Z #, melee.enums.Button.BUTTON_START
     ]
     for i, b in enumerate(btns):
-        if bool(action_tensor[i].item()):
+        if action_tensor[i].item()> 0.5:
             controller.press_button(b)
 
-    # Analog sticks
+    #Analog sticks
     main_x, main_y = action_tensor[11].item(), action_tensor[12].item()
     c_x,    c_y    = action_tensor[13].item(), action_tensor[14].item()
     l_shoulder,    r_shoulder    = action_tensor[15].item(), action_tensor[16].item()
@@ -168,11 +179,17 @@ for _ in range(0,150):
         swag=False
     )
 while True:
+    if gamestate is None:
+        continue
     gamestate = console.step()
     if gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
-        continue
-    obs = make_obs(gamestate)
-    #act = policy(obs.unsqueeze(0)).squeeze(0) # TONY!!
-    #unpack_and_send(controller1,act)
+        obs = make_obs(gamestate)
+        act = policy(obs) # TONY!!
+        unpack_and_send(controller1,act)
+       
+    # if gamestate is None:
+    #     continue
+        continue;
+    
     melee.MenuHelper.skip_postgame(controller1,gamestate)
     melee.MenuHelper.skip_postgame(controller2,gamestate)
