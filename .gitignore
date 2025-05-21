@@ -3,3 +3,4 @@ SmashIso.nkit.iso
 output.csv
 data/
 __pycache__/
+run.sh
