@@ -5,3 +5,4 @@ data/
 __pycache__/
 run.sh
 tonys_data/
+log.txt
