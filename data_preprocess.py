@@ -43,13 +43,10 @@ def process_slp(slp, output_path):
 source_path = "data"
 # find all slp files in the data folder recursively
 slp_paths = glob.glob(os.path.join(source_path, "**/*.slp"), recursive=True)
-# slp_paths = glob.glob(os.path.join(source_path, "2025-05/*.slp"), recursive=True)
 print(len(slp_paths))
 
-# output_path = "data/processed"
-num_train = 449
-num_train = 50
-num_val = 0
+num_train = 100
+num_val = 20
 
 train_output_path = f"data/train_mini_{num_train}"
 val_output_path = f"data/val_mini_{num_val}"
@@ -73,7 +70,7 @@ if __name__ == "__main__":
         json.dump(metadata, f)
 
     metadata = {}
-    for k, v in zip(slp_paths[50:60], val):
+    for k, v in zip(slp_paths[num_train:num_train + num_val], val):
         metadata[os.path.basename(k)] = v
 
     with open(os.path.join(val_output_path, "metadata.json"), "w+") as f:
