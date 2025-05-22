@@ -61,11 +61,17 @@ def unpack_and_send(controller, action_tensor):
         melee.enums.Button.BUTTON_L, melee.enums.Button.BUTTON_R, melee.enums.Button.BUTTON_X,
         melee.enums.Button.BUTTON_Y, melee.enums.Button.BUTTON_Z #, melee.enums.Button.BUTTON_START
     ]
+
+    maxButVal = 0
+    maxBut = None;
     for i, b in enumerate(btns):
-        # if(b==melee.enums.Button.BUTTON_L or b==melee.enums.Button.BUTTON_R):
-        #     continue
-        if action_tensor[i].item() >0.5:
-            controller.press_button(b)
+        if(b==melee.enums.Button.BUTTON_L or b==melee.enums.Button.BUTTON_R):
+            continue
+        if action_tensor[i].item() >0.5 and action_tensor[i].item() > maxButVal:
+            maxButVal = action_tensor[i].item()
+            maxBut = b
+    if maxBut is not None:
+        controller.press_button(maxBut)
             # if(b == melee.enums.Button.BUTTON_A):
             #     print("A")
 
