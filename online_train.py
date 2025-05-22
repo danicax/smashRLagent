@@ -8,47 +8,81 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
-import torch.nn.functional as F
+from torch.nn.functional import mse_loss
 from torch.distributions import Categorical
 import argparse
 import signal
 from util import make_obs
-from PolicyNet import PolicyNet
+from QNet import QNet
+from ReplayBuffer import ReplayBuffer
+import math
 
 from torch.distributions import Bernoulli, Normal
 
-"""
-   act = torch.tensor([
-            float(controller_state.button[melee.enums.Button.BUTTON_A]),
-            float(controller_state.button[melee.enums.Button.BUTTON_B]),
-            float(controller_state.button[melee.enums.Button.BUTTON_D_DOWN]),
-            float(controller_state.button[melee.enums.Button.BUTTON_D_LEFT]),
-            float(controller_state.button[melee.enums.Button.BUTTON_D_RIGHT]),
-            float(controller_state.button[melee.enums.Button.BUTTON_D_UP]),
-            float(controller_state.button[melee.enums.Button.BUTTON_L]),
-            float(controller_state.button[melee.enums.Button.BUTTON_R]),
-            float(controller_state.button[melee.enums.Button.BUTTON_X]),
-            float(controller_state.button[melee.enums.Button.BUTTON_Y]),
-            float(controller_state.button[melee.enums.Button.BUTTON_Z]),
-            # float(controller_state.button[melee.enums.Button.BUTTON_START]), # do we need this? @tony
-            controller_state.main_stick[0], #x/y components
-            controller_state.main_stick[1],
-            controller_state.c_stick[0],
-            controller_state.c_stick[1],
-            controller_state.l_shoulder,
-            controller_state.r_shoulder
-        ], dtype=torch.float32)
-"""
+
+move_inputs = {
+    # No-stick normals
+    "Jab":            [1,0,0,0,0,0,0,0,0,0,0,   0.5,0.5,0.5,0.5,0.5,0.5],
+    "Neutral Tilt":   [1,0,0,0,0,0,0,0,0,0,0,   0.5,0.5,0.5,0.5,0.5,0.5],
+
+    # Movement normals
+    "Dash Attack":    [1,0,0,0,0,0,0,0,0,0,0,   1.0,0.5,0.5,0.5,0.5,0.5],
+    "Forward Tilt":   [1,0,0,0,0,0,0,0,0,0,0,   1.0,0.5,0.5,0.5,0.5,0.5],
+    "Up Tilt":        [1,0,0,0,0,1,0,0,0,0,0,   0.5,1.0,0.5,0.5,0.5,0.5],
+    "Down Tilt":      [1,0,0,0,0,0,0,0,0,0,0,   0.5,0.0,0.5,0.5,0.5,0.5],
+
+    # Smash Attacks (C-Stick flick)
+    "Forward Smash":  [1,0,0,0,0,0,0,0,0,0,0,   0.5,0.5,1.0,0.5,0.5,0.5],
+    "Up Smash":       [1,0,0,0,0,0,0,0,0,0,0,   0.5,0.5,0.5,1.0,0.5,0.5],
+    "Down Smash":     [1,0,0,0,0,0,0,0,0,0,0,   0.5,0.5,0.5,0.0,0.5,0.5],
+
+    # Aerials
+    "Neutral Air":    [1,0,0,0,0,0,0,0,0,0,0,   0.5,0.5,0.5,0.5,0.5,0.5],
+    "Forward Air":    [1,0,0,0,0,0,0,0,0,0,0,   1.0,0.5,0.5,0.5,0.5,0.5],
+    "Back Air":       [1,0,0,0,1,0,0,0,0,0,0,   0.0,0.5,0.5,0.5,0.5,0.5],
+    "Up Air":         [1,0,0,0,0,1,0,0,0,0,0,   0.5,1.0,0.5,0.5,0.5,0.5],
+    "Down Air":       [1,0,0,0,0,0,0,0,0,0,0,   0.5,0.0,0.5,0.5,0.5,0.5],
+
+    # Specials
+    "Neutral B":      [0,1,0,0,0,0,0,0,0,0,0,   0.5,0.5,0.5,0.5,0.5,0.5],
+    "Side B →":       [0,1,0,0,0,0,0,0,0,0,0,   1.0,0.5,0.5,0.5,0.5,0.5],
+    "Side B ←":       [0,1,0,0,0,0,0,0,0,0,0,   0.0,0.5,0.5,0.5,0.5,0.5],
+    "Up B":           [0,1,0,0,0,0,0,0,0,0,0,   0.5,1.0,0.5,0.5,0.5,0.5],
+    "Down B":         [0,1,0,0,0,0,0,0,0,0,0,   0.5,0.0,0.5,0.5,0.5,0.5],
+
+    # Grabs & Throws
+    "Grab":           [0,0,0,0,0,0,0,0,0,0,1,   0.5,0.5,0.5,0.5,0.5,0.5],
+    "Pummel":         [1,0,0,0,0,0,0,0,0,0,1,   0.5,0.5,0.5,0.5,0.5,0.5],
+    "Forward Throw":  [1,0,0,0,0,0,0,0,0,0,1,   1.0,0.5,0.5,0.5,0.5,0.5],
+    "Back Throw":     [1,0,0,0,1,0,0,0,0,0,1,   0.0,0.5,0.5,0.5,0.5,0.5],
+    "Up Throw":       [1,0,0,0,0,0,0,0,0,0,1,   0.5,1.0,0.5,0.5,0.5,0.5],
+    "Down Throw":     [1,0,0,0,0,0,0,0,0,0,1,   0.5,0.0,0.5,0.5,0.5,0.5],
+}
+ACTIONS = torch.tensor(list(move_inputs.values()), dtype=torch.float32)
+
+N_ACTIONS = len(ACTIONS)
 
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+q_net    = QNet(obs_dim=54, n_actions=N_ACTIONS).to(device)
+target_q = QNet(obs_dim=54, n_actions=N_ACTIONS).to(device)
+target_q.load_state_dict(q_net.state_dict())
+opt      = optim.Adam(q_net.parameters(), lr=1e-4)
+buffer   = ReplayBuffer()
+eps_start, eps_end, eps_decay = 1.0, 0.1, 100_000
+gamma = 0.99
+update_target_every = 1000
+step = 0
+
+print(move_list)
 
 def unpack_and_send(controller, action_tensor):
     """
     action_tensor: FloatTensor of shape [act_dim] in the same order you trained on:
       [A, B, D_DOWN, D_LEFT, D_RIGHT, D_UP,
-       L, R, X, Y, Z, START,
-       main_x, main_y, c_x, c_y, raw_x, raw_y, l_shldr, r_shldr]
+       L, R, X, Y, Z, 
+       main_x, main_y, c_x, c_y, l_shldr, r_shldr]
     """
     # First, clear last frame’s inputs
     #controller.release_all()
@@ -84,19 +118,19 @@ def unpack_and_send(controller, action_tensor):
 
 
 # Load the trained model
-model = PolicyNet(obs_dim=54, act_dim=17)
-state_dict = torch.load("trained_policy_distribution.pth", map_location="cpu")
-model.load_state_dict(state_dict)
-model.eval()
+# model = PolicyNet(obs_dim=54, act_dim=17)
+# state_dict = torch.load("trained_policy_distribution.pth", map_location="cpu")
+# model.load_state_dict(state_dict)
+# model.eval()
 
-def policy(obs):
-    with torch.no_grad():
-        mu, logstd = model(obs)  # → [1,17]
-        std = logstd.exp().unsqueeze(0)
-        dist   = Normal(mu, std)
-        sample = dist.sample()          # → [1,17]
-        action = sample.squeeze(0)      # → [17]
-        return action  # Integer action index
+# def policy(obs):
+#     with torch.no_grad():
+#         mu, logstd = model(obs)  # → [1,17]
+#         std = logstd.exp().unsqueeze(0)
+#         dist   = Normal(mu, std)
+#         sample = dist.sample()          # → [1,17]
+#         action = sample.squeeze(0)      # → [17]
+#         return action  # Integer action index
 
 
 def check_port(value):
@@ -166,9 +200,6 @@ if not controller2.connect():
     sys.exit(-1)
 print("Controller2 connected")
 
-
-
-
 costume = 0
 for _ in range(0,150):
     gamestate = console.step()
@@ -202,18 +233,56 @@ for _ in range(0,150):
         autostart=True,    # <-- start when both have been selected
         swag=False
     )
+
+prev_gamestate = None
+state = None
+action_idx = random.randrange(N_ACTIONS)
+
 while True:
-    if gamestate is None:
-        continue
-    gamestate = console.step()
-    if gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
-        obs = make_obs(gamestate)
-        act = policy(obs) # TONY!!
-        unpack_and_send(controller1,act)
-       
     # if gamestate is None:
     #     continue
-        continue;
+
+    # gamestate = console.step()
+    # if gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
+    #     unpack_and_send(controller1,ACTIONS[a_idx])
+    #     next_gs = console.step();
+    #     next_obs = make_obs(next_gs)
+    #     reward = compute_reward(gamestate,next_gs)
+
+    #     buffer.push(obs,a_idx,reward,next_obs,False)
+
+    #     obs = make_obs(gamestate)
+
+    #     eps = eps_end + (eps_start - eps_end) * math.exp(-1. * step / eps_decay)
+    #     if random.random() < eps:
+    #         a_idx = random.randrange(N_ACTIONS)
+    #     else:
+    #         with torch.no_grad():
+    #             q_vals = q_net(obs)      # [1, N_ACTIONS]
+    #             a_idx  = q_vals.argmax(dim=1).item()
+
+    #         r = compute_reward(gamestate)
+
+            
+    #         act = policy(obs) # TONY!!
+    #         unpack_and_send(controller1,ACTIONS[a_idx])
+        
+    #         continue;
+    # else:
+    #     gamestate = console.step()
+
+    if gamestate is None:
+        continue
+    prev_gamestate = gamestate
+    gamestate = console.step()
+    if gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
+        if prev_gamestate is None:
+            
+            continue
+        #unpack_and_send(controller1, ACTIONS[action_idx])
+
+        continue
+
     
     melee.MenuHelper.skip_postgame(controller1,gamestate)
     melee.MenuHelper.skip_postgame(controller2,gamestate)
