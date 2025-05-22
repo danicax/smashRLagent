@@ -78,18 +78,18 @@ N_ACTIONS = len(move_inputs)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-q_net    = QNet(obs_dim=54, n_actions=N_ACTIONS).to(device)
-target_q = QNet(obs_dim=54, n_actions=N_ACTIONS).to(device)
+q_net    = QNet(obs_dim=70, n_actions=N_ACTIONS).to(device)
+target_q = QNet(obs_dim=70, n_actions=N_ACTIONS).to(device)
 target_q.load_state_dict(q_net.state_dict())
 opt      = optim.Adam(q_net.parameters(), lr=1e-4)
 buffer   = ReplayBuffer()
-eps_start, eps_end, eps_decay = 1.0, 0.1, 100_000
+eps_start, eps_end, eps_decay = 1.0, 0.5, 10_000
 gamma = 0.99
 update_target_every = 1000
 step = 0
 batch_size = 32
 
-def compute_epsilon(step, eps_start=1.0, eps_end=0.1, eps_decay=100_000):
+def compute_epsilon(step, eps_start=1.0, eps_end=0.5, eps_decay=10_000):
     """
     Exponentially decay ε from eps_start→eps_end over eps_decay steps.
     After many steps, ε → eps_end.
@@ -262,7 +262,19 @@ def compute_reward(prev_gamestate, gamestate):
         return 0.0
 
     # Example: reward based on stock difference
-    reward = (prev_gamestate.players[1].stock - gamestate.players[1].stock) * 10.0
+    player_stock = (gamestate.players[1].stock - prev_gamestate.players[1].stock) * 10.0
+    enemy_stock = -(gamestate.players[2].stock - prev_gamestate.players[2].stock) * 10.0
+
+    player_hp = 0
+    enemy_hp = 0
+
+    if(player_stock == 0):
+        player_hp = -(gamestate.players[1].percent - prev_gamestate.players[1].percent) * 0.1
+    if(enemy_stock == 0):
+        enemy_hp = (gamestate.players[2].percent - prev_gamestate.players[2].percent) * 0.1
+
+
+    reward = player_stock + enemy_stock + player_hp + enemy_hp
     return reward
 
 def check_done(gamestate):
@@ -322,13 +334,11 @@ while True:
             action_idx = random.randrange(N_ACTIONS)
         else:
             with torch.no_grad():
-                q_vals = q_net(gamestate)  # [1, N_ACTIONS]
-                action_idx = q_vals.argmax(dim=1).item()
+                q_vals = q_net(state)  # [1, N_ACTIONS]
+                action_idx = q_vals.argmax().item()
         
 
         if done:
-            controller1.release_all()
-            controller2.release_all()
             prev_gamestate = None
             prev_state = None
             action_idx = random.randrange(N_ACTIONS)

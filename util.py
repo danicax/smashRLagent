@@ -33,8 +33,8 @@ def make_obs(gamestate, max_projectiles=5):
     # get player slots 1 & 2
     ps = gamestate.players
     f1 = player_feats(ps.get(1)) if 1 in ps else [0.0]*17
-    #f2 = player_feats(ps.get(2)) if 2 in ps else [0.0]*17 #we dont want player2 data right?
-    f2 = [float(gamestate.players.get(2).character.value)]
+    f2 = player_feats(ps.get(2)) if 2 in ps else [0.0]*17 #we dont want player2 data right?
+    #f2 = [float(gamestate.players.get(2).character.value)]
 
     # 2) Stage as one float
     stage_feat = [float(gamestate.stage.value)]
@@ -56,7 +56,7 @@ def make_obs(gamestate, max_projectiles=5):
     if needed > 0:
         proj_feats.extend([0.0]*needed)
 
-    all_feats = f1 + stage_feat + proj_feats + f2
+    all_feats = f1 + f2+ stage_feat + proj_feats
     return torch.tensor(all_feats, dtype=torch.float32)
 
 def get_controller_state(controller_state):
