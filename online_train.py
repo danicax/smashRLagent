@@ -28,11 +28,15 @@ move_inputs = {
     # Movement normals
     "Dash Attack":    [1,0,0,0,0,0,0,0,0,0,0,   1.0,0.5,0.5,0.5,0.5,0.5],
     "Forward Tilt":   [1,0,0,0,0,0,0,0,0,0,0,   1.0,0.5,0.5,0.5,0.5,0.5],
+    "BDash Attack":    [1,0,0,0,0,0,0,0,0,0,0,  0.0,0.5,0.5,0.5,0.5,0.5],
+    "BForward Tilt":   [1,0,0,0,0,0,0,0,0,0,0,  0.0,0.5,0.5,0.5,0.5,0.5],
+
     "Up Tilt":        [1,0,0,0,0,1,0,0,0,0,0,   0.5,1.0,0.5,0.5,0.5,0.5],
     "Down Tilt":      [1,0,0,0,0,0,0,0,0,0,0,   0.5,0.0,0.5,0.5,0.5,0.5],
 
     # Smash Attacks (C-Stick flick)
     "Forward Smash":  [1,0,0,0,0,0,0,0,0,0,0,   0.5,0.5,1.0,0.5,0.5,0.5],
+    "BForward Smash":  [1,0,0,0,0,0,0,0,0,0,0,  0.5,0.5,0.0,0.5,0.5,0.5],
     "Up Smash":       [1,0,0,0,0,0,0,0,0,0,0,   0.5,0.5,0.5,1.0,0.5,0.5],
     "Down Smash":     [1,0,0,0,0,0,0,0,0,0,0,   0.5,0.5,0.5,0.0,0.5,0.5],
 
@@ -57,25 +61,40 @@ move_inputs = {
     "Back Throw":     [1,0,0,0,1,0,0,0,0,0,1,   0.0,0.5,0.5,0.5,0.5,0.5],
     "Up Throw":       [1,0,0,0,0,0,0,0,0,0,1,   0.5,1.0,0.5,0.5,0.5,0.5],
     "Down Throw":     [1,0,0,0,0,0,0,0,0,0,1,   0.5,0.0,0.5,0.5,0.5,0.5],
+
+    # Movement / positioning
+    "Walk Left":   [0,0,0,0,0,0,0,0,0,0,0,   0.0,0.5,0.5,0.5,0.5,0.5],
+    "Walk Right":  [0,0,0,0,0,0,0,0,0,0,0,   1.0,0.5,0.5,0.5,0.5,0.5],
+    "Crouch":      [0,0,0,0,0,0,0,0,0,0,0,   0.5,0.0,0.5,0.5,0.5,0.5],
+    
+    # Aerial jump
+    # (tap Y in neutral)
+    "Jump":        [0,0,0,0,0,0,0,0,0,1,0,   0.5,0.5,0.5,0.5,0.5,0.5],
 }
 ACTIONS = torch.tensor(list(move_inputs.values()), dtype=torch.float32)
 
-N_ACTIONS = len(ACTIONS)
+N_ACTIONS = len(move_inputs)
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-q_net    = QNet(obs_dim=54, n_actions=N_ACTIONS).to(device)
-target_q = QNet(obs_dim=54, n_actions=N_ACTIONS).to(device)
+q_net    = QNet(obs_dim=70, n_actions=N_ACTIONS).to(device)
+target_q = QNet(obs_dim=70, n_actions=N_ACTIONS).to(device)
 target_q.load_state_dict(q_net.state_dict())
 opt      = optim.Adam(q_net.parameters(), lr=1e-4)
 buffer   = ReplayBuffer()
-eps_start, eps_end, eps_decay = 1.0, 0.1, 100_000
+eps_start, eps_end, eps_decay = 1.0, 0.5, 10_000
 gamma = 0.99
 update_target_every = 1000
 step = 0
+batch_size = 32
 
-print(move_list)
+def compute_epsilon(step, eps_start=1.0, eps_end=0.5, eps_decay=10_000):
+    """
+    Exponentially decay ε from eps_start→eps_end over eps_decay steps.
+    After many steps, ε → eps_end.
+    """
+    return eps_end + (eps_start - eps_end) * math.exp(-1. * step / eps_decay)
 
 def unpack_and_send(controller, action_tensor):
     """
@@ -85,7 +104,7 @@ def unpack_and_send(controller, action_tensor):
        main_x, main_y, c_x, c_y, l_shldr, r_shldr]
     """
     # First, clear last frame’s inputs
-    #controller.release_all()
+    controller.release_all()
 
     # Booleans
     print("ACTION",action_tensor)
@@ -101,8 +120,6 @@ def unpack_and_send(controller, action_tensor):
         #     continue
         if action_tensor[i].item() >0.5:
             controller.press_button(b)
-        else:
-            controller.release_button(b)
             # if(b == melee.enums.Button.BUTTON_A):
             #     print("A")
 
@@ -235,51 +252,96 @@ for _ in range(0,150):
     )
 
 prev_gamestate = None
-state = None
+prev_state = None
 action_idx = random.randrange(N_ACTIONS)
 
+def compute_reward(prev_gamestate, gamestate):
+    # Compute the reward based on the game state
+    # For now, just return a dummy reward
+    if prev_gamestate is None or gamestate is None:
+        return 0.0
+
+    # Example: reward based on stock difference
+    player_stock = (gamestate.players[1].stock - prev_gamestate.players[1].stock) * 10.0
+    enemy_stock = -(gamestate.players[2].stock - prev_gamestate.players[2].stock) * 10.0
+
+    player_hp = 0
+    enemy_hp = 0
+
+    if(player_stock == 0):
+        player_hp = -(gamestate.players[1].percent - prev_gamestate.players[1].percent) * 0.1
+    if(enemy_stock == 0):
+        enemy_hp = (gamestate.players[2].percent - prev_gamestate.players[2].percent) * 0.1
+
+
+    reward = player_stock + enemy_stock + player_hp + enemy_hp
+    return reward
+
+def check_done(gamestate):
+    # Check if the game is over
+    if gamestate.menu_state in [melee.Menu.POSTGAME_SCORES]:
+        return True
+    return False
+
+count = 0
 while True:
-    # if gamestate is None:
-    #     continue
-
-    # gamestate = console.step()
-    # if gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
-    #     unpack_and_send(controller1,ACTIONS[a_idx])
-    #     next_gs = console.step();
-    #     next_obs = make_obs(next_gs)
-    #     reward = compute_reward(gamestate,next_gs)
-
-    #     buffer.push(obs,a_idx,reward,next_obs,False)
-
-    #     obs = make_obs(gamestate)
-
-    #     eps = eps_end + (eps_start - eps_end) * math.exp(-1. * step / eps_decay)
-    #     if random.random() < eps:
-    #         a_idx = random.randrange(N_ACTIONS)
-    #     else:
-    #         with torch.no_grad():
-    #             q_vals = q_net(obs)      # [1, N_ACTIONS]
-    #             a_idx  = q_vals.argmax(dim=1).item()
-
-    #         r = compute_reward(gamestate)
-
-            
-    #         act = policy(obs) # TONY!!
-    #         unpack_and_send(controller1,ACTIONS[a_idx])
-        
-    #         continue;
-    # else:
-    #     gamestate = console.step()
 
     if gamestate is None:
         continue
+
     prev_gamestate = gamestate
+    if prev_gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
+        print("ACTION",action_idx)
+        unpack_and_send(controller1, ACTIONS[action_idx])
+        prev_state = make_obs(prev_gamestate)
+
     gamestate = console.step()
     if gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
-        if prev_gamestate is None:
-            
+        count +=1
+        if prev_gamestate is None or prev_state is None:
             continue
-        #unpack_and_send(controller1, ACTIONS[action_idx])
+        state = make_obs(gamestate)
+        reward = compute_reward(prev_gamestate, gamestate)
+        done = check_done(gamestate)
+
+        buffer.push(prev_state, action_idx, reward, state, done)
+
+        # update Q
+        if len(buffer) >= batch_size:
+            batch = buffer.sample(batch_size)
+            states, actions, rewards, next_states, dones = batch
+
+            # Compute the target Q-values
+            with torch.no_grad():
+                target_q_values = target_q(next_states).max(1)[0]
+                target_q_values = rewards + (1 - dones) * gamma * target_q_values
+
+            # Compute the current Q-values
+            q_values = q_net(states).gather(1, actions.unsqueeze(1)).squeeze(1)
+
+            # Compute the loss
+            loss = mse_loss(q_values, target_q_values)
+
+            # Optimize the model
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+
+        # exploration/exploitation
+
+        eps = compute_epsilon(count)
+        if random.random() < eps:
+            action_idx = random.randrange(N_ACTIONS)
+        else:
+            with torch.no_grad():
+                q_vals = q_net(state)  # [1, N_ACTIONS]
+                action_idx = q_vals.argmax().item()
+        
+
+        if done:
+            prev_gamestate = None
+            prev_state = None
+            action_idx = random.randrange(N_ACTIONS)
 
         continue
 
