@@ -49,7 +49,7 @@ def unpack_and_send(controller, action_tensor):
     controller.release_all()
 
     # Booleans
-    #print("ACTION",action_tensor,"\n")
+    print("ACTION")
     btns = [
         melee.enums.Button.BUTTON_A, melee.enums.Button.BUTTON_B, melee.enums.Button.BUTTON_D_DOWN,
         melee.enums.Button.BUTTON_D_LEFT, melee.enums.Button.BUTTON_D_RIGHT,melee.enums. Button.BUTTON_D_UP,
@@ -88,7 +88,7 @@ class PolicyNet(nn.Module):
 
 # Load the trained model
 model = PolicyNet(obs_dim=54, act_dim=17)
-state_dict = torch.load("trained_policy.pth", map_location="cpu")
+state_dict = torch.load("trained_policy_l2.pth", map_location="cpu")
 model.load_state_dict(state_dict)
 model.eval()
 
@@ -201,7 +201,7 @@ for _ in range(0,150):
         melee.Character.FALCO,
         melee.Stage.BATTLEFIELD,
         connect_code='',
-        cpu_level=9,
+        cpu_level=0,
         costume=costume,
         autostart=True,    # <-- start when both have been selected
         swag=False
@@ -212,7 +212,7 @@ while True:
     gamestate = console.step()
     if gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
         obs = make_obs(gamestate)
-        act = policy(obs) # TONY!!
+        act = policy(obs.squeeze(0)).unsqueeze(0) # TONY!!
         unpack_and_send(controller1,act)
        
     # if gamestate is None:
