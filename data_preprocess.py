@@ -42,7 +42,7 @@ slp_paths = glob.glob(os.path.join(source_path, "**/*.slp"), recursive=True)
 print(len(slp_paths))
 
 # output_path = "data/processed"
-num_train = 515
+num_train = 50
 num_val = 0
 
 train_output_path = f"data/train_mini_{num_train}"

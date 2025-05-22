@@ -8,9 +8,14 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
+import torch.nn.functional as F
+from torch.distributions import Categorical
 import argparse
 import signal
 from util import make_obs
+from PolicyNet import PolicyNet
+
+from torch.distributions import Bernoulli, Normal
 
 """
    act = torch.tensor([
@@ -49,7 +54,7 @@ def unpack_and_send(controller, action_tensor):
     controller.release_all()
 
     # Booleans
-    print("ACTION")
+    print("ACTION",action_tensor)
     btns = [
         melee.enums.Button.BUTTON_A, melee.enums.Button.BUTTON_B, melee.enums.Button.BUTTON_D_DOWN,
         melee.enums.Button.BUTTON_D_LEFT, melee.enums.Button.BUTTON_D_RIGHT,melee.enums. Button.BUTTON_D_UP,
@@ -74,33 +79,21 @@ def unpack_and_send(controller, action_tensor):
     controller.press_shoulder(melee.enums.Button.BUTTON_L, l_shoulder)
     controller.press_shoulder(melee.enums.Button.BUTTON_R, r_shoulder)
 
-class PolicyNet(nn.Module):
-    def __init__(self, obs_dim, act_dim):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(obs_dim, 64), nn.ReLU(),
-            nn.Linear(64, 64),      nn.ReLU(),
-            nn.Linear(64, act_dim)
-        )
-
-    def forward(self, x):
-        return self.net(x)
 
 # Load the trained model
 model = PolicyNet(obs_dim=54, act_dim=17)
-state_dict = torch.load("trained_policy_l2.pth", map_location="cpu")
+state_dict = torch.load("trained_policy_distribution.pth", map_location="cpu")
 model.load_state_dict(state_dict)
 model.eval()
 
 def policy(obs):
-    """
-    Dummy policy function that returns a random action tensor.
-    Replace this with your actual policy model.
-    """
-    # Assuming the action space is 18-dimensional
-    # action_dim = 17
-    act = model(obs)
-    return act  # Random action for demonstration purposes
+    with torch.no_grad():
+        mu, logstd = model(obs)  # → [1,17]
+        std = logstd.exp().unsqueeze(0)
+        dist   = Normal(mu, std)
+        sample = dist.sample()          # → [1,17]
+        action = sample.squeeze(0)      # → [17]
+        return action  # Integer action index
 
 
 def check_port(value):
@@ -201,7 +194,7 @@ for _ in range(0,150):
         melee.Character.FALCO,
         melee.Stage.BATTLEFIELD,
         connect_code='',
-        cpu_level=0,
+        cpu_level=9,
         costume=costume,
         autostart=True,    # <-- start when both have been selected
         swag=False
@@ -212,7 +205,7 @@ while True:
     gamestate = console.step()
     if gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
         obs = make_obs(gamestate)
-        act = policy(obs.squeeze(0)).unsqueeze(0) # TONY!!
+        act = policy(obs) # TONY!!
         unpack_and_send(controller1,act)
        
     # if gamestate is None:
