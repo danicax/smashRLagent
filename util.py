@@ -61,6 +61,8 @@ def make_obs(gamestate, max_projectiles=5):
 
 def get_controller_state(controller_state):
     # get the controller state
+    
+    print("hi", controller_state.button)
     act = torch.tensor([
             float(controller_state.button[melee.enums.Button.BUTTON_A]),
             float(controller_state.button[melee.enums.Button.BUTTON_B]),

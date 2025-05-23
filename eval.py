@@ -14,6 +14,7 @@ import argparse
 import signal
 from util import make_obs
 from PolicyNet import PolicyNet
+from QNet import QNet
 
 from torch.distributions import Bernoulli, Normal
 
@@ -84,8 +85,12 @@ def unpack_and_send(controller, action_tensor):
 
 
 # Load the trained model
-model = PolicyNet(obs_dim=54, act_dim=17)
-state_dict = torch.load("trained_policy_distribution_fixed.pth", map_location="cpu")
+# model = PolicyNet(obs_dim=54, act_dim=17)
+# state_dict = torch.load("D:\cs224rPython\trained_qnet_630.pth.pth", map_location="cpu")
+
+model = QNet(obs_dim=70, act_dim=17)
+state_dict = torch.load("trained_qnet_630.pth", map_location="cpu")
+
 model.load_state_dict(state_dict)
 model.eval()
 

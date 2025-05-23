@@ -94,13 +94,13 @@ target_q = QNet(obs_dim=70, n_actions=N_ACTIONS).to(device)
 target_q.load_state_dict(q_net.state_dict())
 opt      = optim.Adam(q_net.parameters(), lr=1e-4)
 buffer   = ReplayBuffer()
-eps_start, eps_end, eps_decay = 1.0, 0.5, 10_000
+eps_start, eps_end, eps_decay = 1.0, 0.2, 1_000
 gamma = 0.99
 update_target_every = 1000
 step = 0
 batch_size = 32
 
-def compute_epsilon(step, eps_start=1.0, eps_end=0.5, eps_decay=10_000):
+def compute_epsilon(step, eps_start=1.0, eps_end=0.2, eps_decay=1_000):
     """
     Exponentially decay ε from eps_start→eps_end over eps_decay steps.
     After many steps, ε → eps_end.
@@ -256,7 +256,7 @@ for _ in range(0,150):
         melee.Character.FALCO,
         melee.Stage.BATTLEFIELD,
         connect_code='',
-        cpu_level=9,
+        cpu_level=0,
         costume=costume,
         autostart=True,    # <-- start when both have been selected
         swag=False
@@ -273,8 +273,13 @@ def compute_reward(prev_gamestate, gamestate):
         return 0.0
 
     # Example: reward based on stock difference
-    player_stock = (int(gamestate.players[1].stock) - int(prev_gamestate.players[1].stock)) * 100.0
-    enemy_stock = -(int(gamestate.players[2].stock) - int(prev_gamestate.players[2].stock)) * 100.0
+    player_stock = 0
+    enemy_stock = 0
+
+    if gamestate.players[1].stock < prev_gamestate.players[1].stock:
+        player_stock = (int(gamestate.players[1].stock) - int(prev_gamestate.players[1].stock)) * 1000.0
+    if gamestate.players[2].stock < prev_gamestate.players[2].stock:
+        enemy_stock = -(int(gamestate.players[2].stock) - int(prev_gamestate.players[2].stock)) * 1000.0
 
     player_hp = 0
     enemy_hp = 0
@@ -295,7 +300,7 @@ def compute_reward(prev_gamestate, gamestate):
 
 count = 0
 num_games = 0
-num_train = 15
+num_train = 30
 done = False
 
 while True:
@@ -312,7 +317,7 @@ while True:
 
     gamestate = console.step()
 
-    if gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
+    if gamestate is not None and gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
         count +=1
         if prev_gamestate is None or prev_state is None:
             continue
@@ -324,8 +329,8 @@ while True:
 
         # update Q
         if len(buffer) >= batch_size:
-            batch = buffer.sample(batch_size)
-            states, actions, rewards, next_states, dones = batch
+           
+            states, actions, rewards, next_states, dones = buffer.sample(batch_size)
 
             # Compute the target Q-values
             with torch.no_grad():
@@ -342,6 +347,9 @@ while True:
             opt.zero_grad()
             loss.backward()
             opt.step()
+            if count % update_target_every == 0:
+                print(f"Step {count}, Loss: {loss.item():.4f}")
+                target_q.load_state_dict(q_net.state_dict())
 
         # exploration/exploitation
 
@@ -364,5 +372,7 @@ while True:
     prev_gamestate = None
     prev_state = None
     action_idx = random.randrange(N_ACTIONS)
+    if gamestate is None:
+        continue
     melee.MenuHelper.skip_postgame(controller1,gamestate)
     melee.MenuHelper.skip_postgame(controller2,gamestate)
