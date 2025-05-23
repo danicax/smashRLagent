@@ -43,7 +43,7 @@ class MeleeDataset(Dataset):
                 data = pickle.load(f)
             self.states[curr_game_file] = data["states"]
             self.actions[curr_game_file] = data["actions"]
-            print(f"Loaded {curr_game_file} with {len(self.states[curr_game_file])} states and {len(self.actions[curr_game_file])} actions. The cache size is {len(self.states)}.")
+            # print(f"Loaded {curr_game_file} with {len(self.states[curr_game_file])} states and {len(self.actions[curr_game_file])} actions. The cache size is {len(self.states)}.")
             # if the cache is full, remove the least recently used game file
             if self.cache_size is not None and len(self.states) > self.cache_size:
                 self.states.popitem(last=False)
