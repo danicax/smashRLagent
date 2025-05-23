@@ -34,7 +34,7 @@ def make_obs(gamestate, max_projectiles=5):
     ps = gamestate.players
     f1 = player_feats(ps.get(1)) if 1 in ps else [0.0]*17
     f2 = player_feats(ps.get(2)) if 2 in ps else [0.0]*17 #we dont want player2 data right?
-    # f2 = [float(gamestate.players.get(2).character.value)]
+    #f2 = [float(gamestate.players.get(2).character.value)]
 
     # 2) Stage as one float
     stage_feat = [float(gamestate.stage.value)]
