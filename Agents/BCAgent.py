@@ -12,12 +12,9 @@ class BCAgent(Agent):
         self.policy_net = PolicyNet(obs_dim, act_dim).to(device)
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=0.001)
 
-    def train(self, states, actions):
+    def train(self, states, actions, next_states):
         self.policy_net.train()
-        mu, logstd = self.policy_net(states)               # mu: [B,17], logstd: [17]
-        logstd = torch.clamp(logstd, min=-20, max=2)
-        std    = torch.exp(logstd)
-
+        mu, std = self.policy_net(states)               # mu: [B,17], logstd: [17]
         dist = Normal(loc=mu, scale=std)
         
         # log_prob has shape [B], one log‐prob per sample
@@ -33,9 +30,7 @@ class BCAgent(Agent):
 
     def predict(self, state):
         self.policy_net.eval()
-        mu, logstd = self.policy_net(state)
-        logstd = torch.clamp(logstd, min=-20, max=2)
-        std    = torch.exp(logstd)
+        mu, std = self.policy_net(state)
 
         dist = Normal(loc=mu, scale=std)
         action = dist.sample()

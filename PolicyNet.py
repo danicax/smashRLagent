@@ -15,5 +15,8 @@ class PolicyNet(nn.Module):
     def forward(self, x):
         h      = self.net(x)
         mu     = self.mu(h)               # [B,17]
+        mu = torch.tanh(mu)
         logstd = self.logstd             # [17]
-        return mu, logstd
+        logstd = torch.clamp(logstd, min=-20, max=2)
+        std    = torch.exp(logstd)
+        return mu, std

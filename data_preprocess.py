@@ -55,10 +55,10 @@ def make_train(x): return process_slp(x, train_output_path)
 def make_val(x): return process_slp(x, val_output_path)
 
 # use multiprocessing to speed up the process
-print(f'working with {mp.cpu_count()} cores')
+print(f'working with {8} cores')
 
 if __name__ == "__main__":
-    with mp.Pool(processes=mp.cpu_count()) as pool:
+    with mp.Pool(processes=8) as pool:
         train = pool.map(make_train, slp_paths[:num_train])
         val = pool.map(make_val, slp_paths[num_train:num_train + num_val])
 
