@@ -107,7 +107,7 @@ def unpack_and_send(controller, action_tensor):
     controller.release_all()
 
     # Booleans
-    print("ACTION",action_tensor)
+    #print("ACTION",action_tensor)
     btns = [
         melee.enums.Button.BUTTON_A, melee.enums.Button.BUTTON_B, melee.enums.Button.BUTTON_D_DOWN,
         melee.enums.Button.BUTTON_D_LEFT, melee.enums.Button.BUTTON_D_RIGHT,melee.enums. Button.BUTTON_D_UP,
@@ -262,16 +262,16 @@ def compute_reward(prev_gamestate, gamestate):
         return 0.0
 
     # Example: reward based on stock difference
-    player_stock = (gamestate.players[1].stock - prev_gamestate.players[1].stock) * 10.0
-    enemy_stock = -(gamestate.players[2].stock - prev_gamestate.players[2].stock) * 10.0
+    player_stock = (int(gamestate.players[1].stock) - int(prev_gamestate.players[1].stock)) * 10.0
+    enemy_stock = -(int(gamestate.players[2].stock) - int(prev_gamestate.players[2].stock)) * 10.0
 
     player_hp = 0
     enemy_hp = 0
 
     if(player_stock == 0):
-        player_hp = -(gamestate.players[1].percent - prev_gamestate.players[1].percent) * 0.1
+        player_hp = -(float(gamestate.players[1].percent) - float(prev_gamestate.players[1].percent)) * 0.1
     if(enemy_stock == 0):
-        enemy_hp = (gamestate.players[2].percent - prev_gamestate.players[2].percent) * 0.1
+        enemy_hp = (float(gamestate.players[2].percent) - float(prev_gamestate.players[2].percent)) * 0.1
 
 
     reward = player_stock + enemy_stock + player_hp + enemy_hp
@@ -279,11 +279,14 @@ def compute_reward(prev_gamestate, gamestate):
 
 def check_done(gamestate):
     # Check if the game is over
-    if gamestate.menu_state in [melee.Menu.POSTGAME_SCORES]:
+    if gamestate.menu_state in [melee.Menu.POSTGAME_SCORES] or gamestate is None:
         return True
     return False
 
 count = 0
+num_games = 0
+name = 0
+num_train = 100000
 while True:
 
     if gamestate is None:
@@ -291,23 +294,35 @@ while True:
 
     prev_gamestate = gamestate
     if prev_gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
-        print("ACTION",action_idx)
+        #print("ACTION",action_idx)
         unpack_and_send(controller1, ACTIONS[action_idx])
         prev_state = make_obs(prev_gamestate)
 
     gamestate = console.step()
+    done = check_done(gamestate)
+    # if done:
+    #     num_games += 1
+    #     prev_gamestate = None
+    #     prev_state = None
+    #     action_idx = random.randrange(N_ACTIONS)
+    if(num_games==num_train):
+        num_games = 0
+        name+=1
+        torch.save(q_net.state_dict(), f"trained_qnet{name}.pth")
+
     if gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
         count +=1
         if prev_gamestate is None or prev_state is None:
             continue
         state = make_obs(gamestate)
         reward = compute_reward(prev_gamestate, gamestate)
-        done = check_done(gamestate)
+        
 
         buffer.push(prev_state, action_idx, reward, state, done)
 
         # update Q
         if len(buffer) >= batch_size:
+            num_games+=1
             batch = buffer.sample(batch_size)
             states, actions, rewards, next_states, dones = batch
 
@@ -336,15 +351,17 @@ while True:
             with torch.no_grad():
                 q_vals = q_net(state)  # [1, N_ACTIONS]
                 action_idx = q_vals.argmax().item()
+                if done:
+                    prev_gamestate = None
+                    prev_state = None
+                    action_idx = random.randrange(N_ACTIONS)
+        #print("ACTION",action_idx)        
+
         
-
-        if done:
-            prev_gamestate = None
-            prev_state = None
-            action_idx = random.randrange(N_ACTIONS)
-
+            
+            
+                #print(f"Q-network saved to trained_qnet{num_games}.pth")
         continue
-
     
     melee.MenuHelper.skip_postgame(controller1,gamestate)
     melee.MenuHelper.skip_postgame(controller2,gamestate)
