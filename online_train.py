@@ -23,6 +23,9 @@ from torch.distributions import Bernoulli, Normal
 move_inputs = {
     # No-stick normals
     "Jab":            [1,0,0,0,0,0,0,0,0,0,0,   0.5,0.5,0.5,0.5,0.5,0.5],
+    "LJab":            [1,0,0,0,0,0,0,0,0,0,0,   0,0.5,0.5,0.5,0.5,0.5],
+    "RJab":            [1,0,0,0,0,0,0,0,0,0,0,   1,0.5,0.5,0.5,0.5,0.5],
+
     "Neutral Tilt":   [1,0,0,0,0,0,0,0,0,0,0,   0.5,0.5,0.5,0.5,0.5,0.5],
 
     # Movement normals
@@ -54,8 +57,16 @@ move_inputs = {
     "Up B":           [0,1,0,0,0,0,0,0,0,0,0,   0.5,1.0,0.5,0.5,0.5,0.5],
     "Down B":         [0,1,0,0,0,0,0,0,0,0,0,   0.5,0.0,0.5,0.5,0.5,0.5],
 
+    "LSide B →":       [0,1,0,0,0,0,0,0,0,0,0,   0.75,0.5,0.5,0.5,0.5,0.5],
+    "RSide B ←":       [0,1,0,0,0,0,0,0,0,0,0,   0.25,0.5,0.5,0.5,0.5,0.5],
+    "LUp B":           [0,1,0,0,0,0,0,0,0,0,0,   0.75,1.0,0.5,0.5,0.5,0.5],
+    "RUp B":           [0,1,0,0,0,0,0,0,0,0,0,   0.25,1.0,0.5,0.5,0.5,0.5],
+
     # Grabs & Throws
     "Grab":           [0,0,0,0,0,0,0,0,0,0,1,   0.5,0.5,0.5,0.5,0.5,0.5],
+    "LGrab":           [0,0,0,0,0,0,0,0,0,0,1,   0,0.5,0.5,0.5,0.5,0.5],
+    "RGrab":           [0,0,0,0,0,0,0,0,0,0,1,   1,0.5,0.5,0.5,0.5,0.5],
+
     "Pummel":         [1,0,0,0,0,0,0,0,0,0,1,   0.5,0.5,0.5,0.5,0.5,0.5],
     "Forward Throw":  [1,0,0,0,0,0,0,0,0,0,1,   1.0,0.5,0.5,0.5,0.5,0.5],
     "Back Throw":     [1,0,0,0,1,0,0,0,0,0,1,   0.0,0.5,0.5,0.5,0.5,0.5],
@@ -262,53 +273,44 @@ def compute_reward(prev_gamestate, gamestate):
         return 0.0
 
     # Example: reward based on stock difference
-    player_stock = (int(gamestate.players[1].stock) - int(prev_gamestate.players[1].stock)) * 10.0
-    enemy_stock = -(int(gamestate.players[2].stock) - int(prev_gamestate.players[2].stock)) * 10.0
+    player_stock = (int(gamestate.players[1].stock) - int(prev_gamestate.players[1].stock)) * 100.0
+    enemy_stock = -(int(gamestate.players[2].stock) - int(prev_gamestate.players[2].stock)) * 100.0
 
     player_hp = 0
     enemy_hp = 0
 
     if(player_stock == 0):
-        player_hp = -(float(gamestate.players[1].percent) - float(prev_gamestate.players[1].percent)) * 0.1
+        if gamestate.players[1].percent > prev_gamestate.players[1].percent:
+            player_hp = -(float(gamestate.players[1].percent) - float(prev_gamestate.players[1].percent)) * 0.1
     if(enemy_stock == 0):
-        enemy_hp = (float(gamestate.players[2].percent) - float(prev_gamestate.players[2].percent)) * 0.1
+        if gamestate.players[2].percent > prev_gamestate.players[2].percent:
+            enemy_hp = (float(gamestate.players[2].percent) - float(prev_gamestate.players[2].percent)) * 0.1
 
 
     reward = player_stock + enemy_stock + player_hp + enemy_hp
+    # if reward<0:
+    #     print("Reward: ", reward, "Player Stock: ", player_stock, "Enemy Stock: ", enemy_stock, "Player HP: ", player_hp, "Enemy HP: ", enemy_hp)
     return reward
 
-def check_done(gamestate):
-    # Check if the game is over
-    if gamestate.menu_state in [melee.Menu.POSTGAME_SCORES] or gamestate is None:
-        return True
-    return False
 
 count = 0
 num_games = 0
-name = 0
-num_train = 100000
+num_train = 15
+done = False
+
 while True:
 
+    
     if gamestate is None:
         continue
 
     prev_gamestate = gamestate
-    if prev_gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
-        #print("ACTION",action_idx)
+    if prev_gamestate is not None and prev_gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
+
         unpack_and_send(controller1, ACTIONS[action_idx])
         prev_state = make_obs(prev_gamestate)
 
     gamestate = console.step()
-    done = check_done(gamestate)
-    # if done:
-    #     num_games += 1
-    #     prev_gamestate = None
-    #     prev_state = None
-    #     action_idx = random.randrange(N_ACTIONS)
-    if(num_games==num_train):
-        num_games = 0
-        name+=1
-        torch.save(q_net.state_dict(), f"trained_qnet{name}.pth")
 
     if gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
         count +=1
@@ -322,7 +324,6 @@ while True:
 
         # update Q
         if len(buffer) >= batch_size:
-            num_games+=1
             batch = buffer.sample(batch_size)
             states, actions, rewards, next_states, dones = batch
 
@@ -351,17 +352,17 @@ while True:
             with torch.no_grad():
                 q_vals = q_net(state)  # [1, N_ACTIONS]
                 action_idx = q_vals.argmax().item()
-                if done:
-                    prev_gamestate = None
-                    prev_state = None
-                    action_idx = random.randrange(N_ACTIONS)
-        #print("ACTION",action_idx)        
-
-        
-            
-            
-                #print(f"Q-network saved to trained_qnet{num_games}.pth")
+               
+        if(done):
+            num_games+=1
+            if(num_games%num_train==0):
+                torch.save(q_net.state_dict(), f"trained_qnet_{num_games}.pth")
+        done = False
         continue
-    
+
+    done = True
+    prev_gamestate = None
+    prev_state = None
+    action_idx = random.randrange(N_ACTIONS)
     melee.MenuHelper.skip_postgame(controller1,gamestate)
     melee.MenuHelper.skip_postgame(controller2,gamestate)

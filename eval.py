@@ -85,7 +85,7 @@ def unpack_and_send(controller, action_tensor):
 
 # Load the trained model
 model = PolicyNet(obs_dim=54, act_dim=17)
-state_dict = torch.load("trained_policy_distribution.pth", map_location="cpu")
+state_dict = torch.load("trained_policy_distribution_fixed.pth", map_location="cpu")
 model.load_state_dict(state_dict)
 model.eval()
 
