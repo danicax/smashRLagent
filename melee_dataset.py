@@ -20,7 +20,7 @@ class MeleeDataset(Dataset):
         # calculate the total length of the dataset
         self.length = 0
         for k, v in self.metadata.items():
-            self.length += v
+            self.length += v-1
 
         # initialize the states and actions. These are LRU caches.
         self.states = OrderedDict()
@@ -32,10 +32,10 @@ class MeleeDataset(Dataset):
     def __getitem__(self, idx):
         # find the game file that contains the idx-th state, action pair
         for k, v in self.metadata.items():
-            if idx < v:
+            if idx < v-1:
                 curr_game_file = k
                 break
-            idx -= v
+            idx -= v-1
 
         # if the game file is not in the cache, load it
         if curr_game_file not in self.states:
@@ -43,7 +43,7 @@ class MeleeDataset(Dataset):
                 data = pickle.load(f)
             self.states[curr_game_file] = data["states"]
             self.actions[curr_game_file] = data["actions"]
-            print(f"Loaded {curr_game_file} with {len(self.states[curr_game_file])} states and {len(self.actions[curr_game_file])} actions. The cache size is {len(self.states)}.")
+            # print(f"Loaded {curr_game_file} with {len(self.states[curr_game_file])} states and {len(self.actions[curr_game_file])} actions. The cache size is {len(self.states)}.")
             # if the cache is full, remove the least recently used game file
             if self.cache_size is not None and len(self.states) > self.cache_size:
                 self.states.popitem(last=False)
@@ -51,12 +51,12 @@ class MeleeDataset(Dataset):
 
         state = self.states[curr_game_file][idx]
         action = self.actions[curr_game_file][idx]
-
+        next_state = self.states[curr_game_file][idx+1]
         # move the game file to the end of the cache
         self.states.move_to_end(curr_game_file)
         self.actions.move_to_end(curr_game_file)
 
-        return state, action
+        return state, action, next_state
     
     
     

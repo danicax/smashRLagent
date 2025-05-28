@@ -13,8 +13,10 @@ from torch.distributions import Categorical
 import argparse
 import signal
 from util import make_obs
-from PolicyNet import PolicyNet
-from QNet import QNet
+# from PolicyNet import PolicyNet
+# from QNet import QNet
+# from PolicyNet import PolicyNet
+from Agents.BCAgent import BCAgent
 
 from torch.distributions import Bernoulli, Normal
 
@@ -62,16 +64,6 @@ def unpack_and_send(controller, action_tensor):
         melee.enums.Button.BUTTON_L, melee.enums.Button.BUTTON_R, melee.enums.Button.BUTTON_X,
         melee.enums.Button.BUTTON_Y, melee.enums.Button.BUTTON_Z #, melee.enums.Button.BUTTON_START
     ]
-    
-    for i, b in enumerate(btns):
-        # if(b==melee.enums.Button.BUTTON_L or b==melee.enums.Button.BUTTON_R):
-        #     continue
-        if action_tensor[i].item() >0.5:
-            controller.press_button(b)
-        else:
-            controller.release_button(b)
-            # if(b == melee.enums.Button.BUTTON_A):
-            #     print("A")
 
     #Analog sticks
     main_x, main_y = action_tensor[11].item(), action_tensor[12].item()
@@ -82,27 +74,47 @@ def unpack_and_send(controller, action_tensor):
     controller.tilt_analog(melee.enums.Button.BUTTON_C,    c_x,    c_y)
     controller.press_shoulder(melee.enums.Button.BUTTON_L, l_shoulder)
     controller.press_shoulder(melee.enums.Button.BUTTON_R, r_shoulder)
+    
+    for i, b in enumerate(btns):
+        # if(b==melee.enums.Button.BUTTON_L or b==melee.enums.Button.BUTTON_R):
+        #     continue
+        # print(b, action_tensor[i].item())
+        if action_tensor[i].item() >0.5:
+            controller.press_button(b)
+        else:
+            controller.release_button(b)
+            # if(b == melee.enums.Button.BUTTON_A):
+            #     print("A")
+
 
 
 # Load the trained model
+
 # model = PolicyNet(obs_dim=54, act_dim=17)
 # state_dict = torch.load("D:\cs224rPython\trained_qnet_630.pth.pth", map_location="cpu")
 
-model = QNet(obs_dim=70, act_dim=17)
-state_dict = torch.load("trained_qnet_630.pth", map_location="cpu")
+# model = QNet(obs_dim=70, act_dim=17)
+# state_dict = torch.load("trained_qnet_630.pth", map_location="cpu")
 
-model.load_state_dict(state_dict)
-model.eval()
+# model.load_state_dict(state_dict)
+# model.eval()
 
-def policy(obs):
-    with torch.no_grad():
-        mu, logstd = model(obs)  # → [1,17]
-        std = logstd.exp().unsqueeze(0)
-        dist   = Normal(mu, std)
-        sample = dist.sample()          # → [1,17]
-        action = sample.squeeze(0)      # → [17]
-        return action  # Integer action index
+# def policy(obs):
+#     with torch.no_grad():
+#         mu, logstd = model(obs)  # → [1,17]
+#         std = logstd.exp().unsqueeze(0)
+#         dist   = Normal(mu, std)
+#         sample = dist.sample()          # → [1,17]
+#         action = sample.squeeze(0)      # → [17]
+#         return action  # Integer action index
+# =======
 
+
+agent = BCAgent(obs_dim=70, act_dim=17)
+# model = PolicyNet(obs_dim=70, act_dim=17)
+state_dict = torch.load("bc_100_train.pth", map_location="cpu")
+agent.policy_net.load_state_dict(state_dict)
+agent.policy_net.eval()
 
 def check_port(value):
     ivalue = int(value)
@@ -213,7 +225,7 @@ while True:
     gamestate = console.step()
     if gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
         obs = make_obs(gamestate)
-        act = policy(obs) # TONY!!
+        act = agent.predict(obs) # TONY!!
         unpack_and_send(controller1,act)
        
     # if gamestate is None:

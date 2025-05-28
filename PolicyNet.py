@@ -6,14 +6,18 @@ class PolicyNet(nn.Module):
     def __init__(self, obs_dim, act_dim=17):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(obs_dim, 64), nn.ReLU(),
-            nn.Linear(64,      64), nn.ReLU(),
+            nn.Linear(obs_dim, 256), nn.BatchNorm1d(256), nn.ReLU(),
+            nn.Linear(256,      512), nn.BatchNorm1d(512), nn.ReLU(),
+            nn.Linear(512,      128), nn.BatchNorm1d(128), nn.ReLU(),
         )
-        self.mu     = nn.Linear(64, act_dim)         # mean for each of 17 dims
+        self.mu     = nn.Linear(128, act_dim)         # mean for each of 17 dims
         self.logstd = nn.Parameter(torch.zeros(act_dim))  # log-std for each
 
     def forward(self, x):
         h      = self.net(x)
         mu     = self.mu(h)               # [B,17]
+        mu     = torch.sigmoid(mu)       # use sigmoid to ensure the output is between 0 and 1
         logstd = self.logstd             # [17]
-        return mu, logstd
+        logstd = torch.clamp(logstd, min=-20, max=2)
+        std    = torch.exp(logstd)
+        return mu, std

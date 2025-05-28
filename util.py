@@ -56,7 +56,7 @@ def make_obs(gamestate, max_projectiles=5):
     if needed > 0:
         proj_feats.extend([0.0]*needed)
 
-    all_feats = f1 + f2+ stage_feat + proj_feats
+    all_feats = f1 + f2 + stage_feat + proj_feats
     return torch.tensor(all_feats, dtype=torch.float32)
 
 def get_controller_state(controller_state):
