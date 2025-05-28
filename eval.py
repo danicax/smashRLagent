@@ -14,6 +14,8 @@ import argparse
 import signal
 from util import make_obs
 # from PolicyNet import PolicyNet
+# from QNet import QNet
+# from PolicyNet import PolicyNet
 from Agents.BCAgent import BCAgent
 
 from torch.distributions import Bernoulli, Normal
@@ -87,6 +89,26 @@ def unpack_and_send(controller, action_tensor):
 
 
 # Load the trained model
+
+# model = PolicyNet(obs_dim=54, act_dim=17)
+# state_dict = torch.load("D:\cs224rPython\trained_qnet_630.pth.pth", map_location="cpu")
+
+# model = QNet(obs_dim=70, act_dim=17)
+# state_dict = torch.load("trained_qnet_630.pth", map_location="cpu")
+
+# model.load_state_dict(state_dict)
+# model.eval()
+
+# def policy(obs):
+#     with torch.no_grad():
+#         mu, logstd = model(obs)  # → [1,17]
+#         std = logstd.exp().unsqueeze(0)
+#         dist   = Normal(mu, std)
+#         sample = dist.sample()          # → [1,17]
+#         action = sample.squeeze(0)      # → [17]
+#         return action  # Integer action index
+# =======
+
 
 agent = BCAgent(obs_dim=70, act_dim=17)
 # model = PolicyNet(obs_dim=70, act_dim=17)
