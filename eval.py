@@ -88,8 +88,8 @@ def unpack_and_send(controller, action_tensor):
 
 # Load the trained model
 
-# agent = BCAgent(obs_dim=70, act_dim=17)
-agent = BCAgent(obs_dim=72, act_dim=17)
+agent = BCAgent(obs_dim=70, act_dim=17)
+# agent = BCAgent(obs_dim=72, act_dim=17)
 # model = PolicyNet(obs_dim=70, act_dim=17)
 state_dict = torch.load("iql_5.pth", map_location="cpu")
 agent.policy_net.load_state_dict(state_dict)
@@ -180,7 +180,7 @@ for _ in range(0,150):
         gamestate,
         controller1,
         melee.Character.FOX,
-        melee.Stage.BATTLEFIELD,
+        melee.Stage.DREAMLAND,
         connect_code='',
         cpu_level=0,
         costume=costume,
@@ -191,11 +191,11 @@ for _ in range(0,150):
         gamestate,
         controller2,
         melee.Character.FALCO,
-        melee.Stage.BATTLEFIELD,
+        melee.Stage.DREAMLAND,
         connect_code='',
         cpu_level=9,
         costume=costume,
-        autostart=True,    # <-- start when both have been selected
+        autostart=False,    # <-- start when both have been selected
         swag=False
     )
 while True:

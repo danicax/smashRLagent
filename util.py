@@ -27,8 +27,7 @@ def make_obs(gamestate, max_projectiles=5):
             p.speed_ground_x_self,
             p.speed_x_attack,
             p.speed_y_attack,
-            p.speed_y_self,
-            p.hitstun_frames_left
+            p.speed_y_self
         ]
 
     # get player slots 1 & 2

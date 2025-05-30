@@ -12,25 +12,25 @@ class IQLAgent(Agent):
     def __init__(self, obs_dim, act_dim, device="cpu", gamma=0.99, iql_expectile=0.9, AWAC_lambda=0.1, param_update_freq=1000):
         super(IQLAgent, self).__init__()
         self.Qnet = nn.Sequential(
-            nn.Linear(obs_dim+act_dim, 64), nn.ReLU(),
-            nn.Linear(64,      64), nn.ReLU(),
-            nn.Linear(64, 1)
+            nn.Linear(obs_dim+act_dim, 128), nn.ReLU(),
+            nn.Linear(128,      128), nn.ReLU(),
+            nn.Linear(128, 1)
         ).to(device)
         self.Qtarget = nn.Sequential(
-            nn.Linear(obs_dim+act_dim, 64), nn.ReLU(),
-            nn.Linear(64,      64), nn.ReLU(),
-            nn.Linear(64, 1)
+            nn.Linear(obs_dim+act_dim, 128), nn.ReLU(),
+            nn.Linear(128,      128), nn.ReLU(),
+            nn.Linear(128, 1)
         ).to(device)
         self.Vnet = nn.Sequential(
-            nn.Linear(obs_dim, 64), nn.ReLU(),
-            nn.Linear(64,      64), nn.ReLU(),
-            nn.Linear(64, 1)
+            nn.Linear(obs_dim, 128), nn.ReLU(),
+            nn.Linear(128,      128), nn.ReLU(),
+            nn.Linear(128, 1)
         ).to(device)
         self.policy = PolicyNet(obs_dim, act_dim).to(device)
 
-        self.policy_optimizer = optim.Adam(self.policy.parameters(), lr=0.001)
-        self.Qoptimizer = optim.Adam(self.Qnet.parameters(), lr=0.001)
-        self.Voptimizer = optim.Adam(self.Vnet.parameters(), lr=0.001)
+        self.policy_optimizer = optim.Adam(self.policy.parameters(), lr=0.0001)
+        self.Qoptimizer = optim.Adam(self.Qnet.parameters(), lr=0.0001)
+        self.Voptimizer = optim.Adam(self.Vnet.parameters(), lr=0.0001)
 
         self.gamma = gamma
         self.iql_expectile = iql_expectile
@@ -38,43 +38,36 @@ class IQLAgent(Agent):
         self.param_update_freq = param_update_freq
         self.num_param_updates = 0
 
-    # def reward_function(self, states, actions, next_states):
-    #     def get_feats(state):
-    #         p1_stock = state[:, 0]
-    #         p1_percent = state[:, 1]
-    #         p2_stock = state[:, 17]
-    #         p2_percent = state[:, 18]
-    #         return p1_stock, p1_percent, p2_stock, p2_percent
-        
-    #     a,b,c,d = get_feats(states)
-    #     e,f,g,h = get_feats(next_states)
-
-    #     p1_stock_diff = (e - a) * 10
-    #     p2_stock_diff = (c - g) * 10
-
-    #     # print(p1_stock_diff)
-    #     # print(p2_stock_diff)
-
-
-    #     p1_percent_diff = torch.zeros_like(p1_stock_diff)
-    #     p2_percent_diff = torch.zeros_like(p2_stock_diff)
-
-
-    #     p1_percent_diff[p1_stock_diff == 0] = ((f - b) * 0.1)[p1_stock_diff == 0]
-    #     p2_percent_diff[p2_stock_diff == 0] = ((d - h) * 0.1)[p2_stock_diff == 0]
-        
-    #     reward = p1_stock_diff + p2_stock_diff + p1_percent_diff + p2_percent_diff
-    #     return reward
-
     def reward_function(self, states, actions, next_states):
         def get_feats(state):
-            p1_x = state[:, 2]
-            p2_x = state[:, 19]
-            return p1_x, p2_x
+            p1_stock = state[:, 0]
+            p1_percent = state[:, 1]
+            p2_stock = state[:, 17]
+            p2_percent = state[:, 18]
+            return p1_stock, p1_percent, p2_stock, p2_percent
+        
+        a,b,c,d = get_feats(states)
+        e,f,g,h = get_feats(next_states)
 
-        a,b = get_feats(states)
-        c,d = get_feats(next_states)
-        return torch.abs(a - b) - torch.abs(c - d)
+        stock_value = 500
+
+        p1_stock_and_percent = a * stock_value + b
+        p2_stock_and_percent = c * stock_value + d
+        p1_stock_and_percent_next = e * stock_value + f
+        p2_stock_and_percent_next = g * stock_value + h
+        return p1_stock_and_percent_next - p1_stock_and_percent - p2_stock_and_percent_next + p2_stock_and_percent
+
+
+
+    # def reward_function(self, states, actions, next_states):
+    #     def get_feats(state):
+    #         p1_x = state[:, 2]
+    #         p2_x = state[:, 19]
+    #         return p1_x, p2_x
+
+    #     a,b = get_feats(states)
+    #     c,d = get_feats(next_states)
+    #     return torch.abs(a - b) - torch.abs(c - d)
 
 
 
@@ -132,7 +125,7 @@ class IQLAgent(Agent):
         Vloss = self.update_V(states, actions)
         Qloss = self.update_Q(states, actions, next_states)
         adv = self.estimate_advantage(states, actions)
-        adv = torch.zeros_like(adv)
+        # adv = torch.zeros_like(adv)
         Ploss = self.update_policy(states, actions, adv)
 
         self.num_param_updates += 1
@@ -149,7 +142,7 @@ class IQLAgent(Agent):
         dist = self.policy(state.unsqueeze(0))
         action = dist.sample().squeeze(0)
         action[:11] = action[:11] > 0.5
-        action[-2] = action[-2] if action[-2] > 0.5 else 0
-        action[-1] = action[-1] if action[-1] > 0.5 else 0
+        action[-2] = action[-2] if action[-2] > 0.2 else 0
+        action[-1] = action[-1] if action[-1] > 0.2 else 0
         return action.cpu().numpy()
 
