@@ -88,9 +88,10 @@ def unpack_and_send(controller, action_tensor):
 
 # Load the trained model
 
-agent = BCAgent(obs_dim=70, act_dim=17)
+# agent = BCAgent(obs_dim=70, act_dim=17)
+agent = BCAgent(obs_dim=72, act_dim=17)
 # model = PolicyNet(obs_dim=70, act_dim=17)
-state_dict = torch.load("bc_40_train_same_logstd.pth", map_location="cpu")
+state_dict = torch.load("iql_5.pth", map_location="cpu")
 agent.policy_net.load_state_dict(state_dict)
 agent.policy_net.eval()
 
