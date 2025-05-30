@@ -4,9 +4,10 @@ import torch
 class PPOAgent(nn.Module):
     def __init__(self, obs_dim, n_buttons=11, n_analogs=6):
         super().__init__()
-        hid = 128
+        hid = 256
         self.shared = nn.Sequential(
             nn.Linear(obs_dim, hid), nn.ReLU(),
+            nn.Linear(hid, hid),     nn.ReLU(),
             nn.Linear(hid, hid),     nn.ReLU(),
         )
 
@@ -30,4 +31,25 @@ class PPOAgent(nn.Module):
             'value' : self.value_head(h).squeeze(-1)
         }
     
-    
+class PPOAgentSimple(nn.Module):
+    def __init__(self, obs_dim):
+        super().__init__()
+        hid = 128
+        self.shared = nn.Sequential(
+            nn.Linear(obs_dim, hid), nn.ReLU(),
+            nn.Linear(hid, hid),     nn.ReLU(),
+        )
+        # 3 logits for x, 3 logits for y
+        self.joystick_logits = nn.Linear(hid, 6)
+        self.value_head = nn.Linear(hid, 1)
+
+    def forward(self, x):
+        h = self.shared(x)
+        logits = self.joystick_logits(h)  # [batch, 6]
+        logits_x = logits[:, :3]          # [batch, 3]
+        logits_y = logits[:, 3:]          # [batch, 3]
+        return {
+            'logits_x': logits_x,
+            'logits_y': logits_y,
+            'value': self.value_head(h).squeeze(-1)
+        }
