@@ -14,7 +14,7 @@ from Agents.PPOAgent import PPOAgentSimple
 from ReplayBuffer import ReplayBufferPPO
 
 import melee
-from util import make_obs   # reuse your existing helpers
+from util import make_obs_simple as make_obs 
 
 GAMMA       = 0.99
 LAMBDA      = 0.95
@@ -26,13 +26,9 @@ UPDATE_EPOCHS = 4
 MINI_BATCH  = 64
 TOTAL_UPDATES = 1000
 
-obs_dim = 70
-# n_actions = 17
+obs_dim = 5
 n_actions = 2
 
-buffer   = ReplayBufferPPO(ROLLOUT_LEN, obs_dim, n_actions)
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 # --- 3) PPO update function ---
@@ -77,7 +73,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 #         n_updates += 1
 #     return total_actor_loss / n_updates, total_critic_loss / n_updates
 
-ENT_COEF      = 0.01
+ENT_COEF      = 0.05
 CLIP_EPS      = 0.2
 UPDATE_EPOCHS = 4
 MINI_BATCH    = 64
@@ -144,6 +140,26 @@ def ppo_update(agent, buf, opt_act, opt_crit):
 
     return total_a/steps, total_c/steps
 
+num_left = 0
+num_right = 0
+num_down = 0
+def unpack_and_send_c2(controller):
+    global num_down, num_left, num_right
+    controller.release_all()
+    if num_down < 3:
+        controller.tilt_analog_unit(melee.enums.Button.BUTTON_MAIN, 0, -1)
+        num_down += 1
+    else:
+        if num_left < 3:
+            controller.tilt_analog_unit(melee.enums.Button.BUTTON_MAIN, -1, 0)
+            num_left += 1
+        elif num_right < 3:
+            controller.tilt_analog_unit(melee.enums.Button.BUTTON_MAIN, 1, 0)
+            num_right += 1
+        else:
+            num_left = 0
+            num_right = 0
+
 def unpack_and_send(controller, action_tensor):
     """
     action_tensor: FloatTensor of shape [act_dim] in the same order you trained on:
@@ -152,136 +168,13 @@ def unpack_and_send(controller, action_tensor):
        main_x, main_y, c_x, c_y, l_shldr, r_shldr]
     """
     # First, clear last frame’s inputs
-    #controller.release_all()
+    controller.release_all()
 
     # Booleans
     
     main_x, main_y = action_tensor[0].item(), action_tensor[1].item()
     #print("ACTION",action_tensor, main_x, main_y)
     controller.tilt_analog_unit(melee.enums.Button.BUTTON_MAIN, main_x, main_y)
-
-
-def check_port(value):
-    ivalue = int(value)
-    if ivalue < 1 or ivalue > 4:
-        raise argparse.ArgumentTypeError(
-            f"{value} is an invalid controller port. Must be 1, 2, 3, or 4."
-        )
-    return ivalue
-
-parser = argparse.ArgumentParser(description='Run two CPUs vs each other using libmelee')
-parser.add_argument('--port1', '-p1', type=check_port,
-                    help='Controller port for CPU 1', default=1)
-parser.add_argument('--port2', '-p2', type=check_port,
-                    help='Controller port for CPU 2', default=2)
-parser.add_argument('--cpu-level1', type=int, default=9,
-                    help='CPU difficulty for player 1 (0–9)')
-parser.add_argument('--cpu-level2', type=int, default=9,
-                    help='CPU difficulty for player 2 (0–9)')
-parser.add_argument('--address', '-a', default="127.0.0.1",
-                    help='IP address of Slippi/Wii')
-parser.add_argument('--dolphin_executable_path', '-e', default=None,
-                    help='Path to Dolphin executable')
-parser.add_argument('--iso', default=None, type=str,
-                    help='Path to Melee ISO')
-args = parser.parse_args()
-
-# No logging since these are vanilla CPUs
-console = melee.Console(path=args.dolphin_executable_path,
-                        slippi_address=args.address,
-                        logger=None)
-
-# Two virtual controllers
-controller1 = melee.Controller(console=console,
-                               port=args.port1,
-                               type=melee.ControllerType.STANDARD)
-controller2 = melee.Controller(console=console,
-                               port=args.port2,
-                               type=melee.ControllerType.STANDARD)
-
-def signal_handler(sig, frame):
-    console.stop()
-    print("Shutting down cleanly…")
-    sys.exit(0)
-
-signal.signal(signal.SIGINT, signal_handler)
-
-# Launch Dolphin + ISO
-console.run(iso_path=args.iso)
-
-print("Connecting to console…")
-if not console.connect():
-    print("ERROR: Failed to connect to the console.")
-    sys.exit(-1)
-print("Console connected")
-
-# Plug in BOTH controllers
-print(f"Connecting controller on port {args.port1}…")
-if not controller1.connect():
-    print("ERROR: Failed to connect controller1.")
-    sys.exit(-1)
-print("Controller1 connected")
-
-print(f"Connecting controller on port {args.port2}…")
-if not controller2.connect():
-    print("ERROR: Failed to connect controller2.")
-    sys.exit(-1)
-print("Controller2 connected")
-
-costume = 0
-for _ in range(0,150):
-    gamestate = console.step()
-    if gamestate is None:
-        continue
-
-    # If we're past menus, nothing to do—CPUs play themselves
-    if gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
-        continue
-
-    # In the menus, select both CPUs and then autostart on the second
-    melee.MenuHelper.menu_helper_simple(
-        gamestate,
-        controller1,
-        melee.Character.FOX,
-        melee.Stage.BATTLEFIELD,
-        connect_code='',
-        cpu_level=0,
-        costume=costume,
-        autostart=False,
-        swag=False
-    )
-    melee.MenuHelper.menu_helper_simple(
-        gamestate,
-        controller2,
-        melee.Character.FALCO,
-        melee.Stage.BATTLEFIELD,
-        connect_code='',
-        cpu_level=0,
-        costume=costume,
-        autostart=True,    # <-- start when both have been selected
-        swag=False
-    )
-
-agent = PPOAgentSimple(obs_dim).to(device)
-
-
-# opt_actor  = actor = optim.Adam(
-#     list(agent.shared.parameters())
-#   + list(agent.button_logits.parameters())
-#   + list(agent.analog_mu.parameters())
-#   + [agent.analog_logstd],        # it’s a Parameter, so needs to go in manually
-#   lr=LR_ACTOR
-# )
-opt_actor = optim.Adam(
-    list(agent.shared.parameters())
-  + list(agent.joystick_logits.parameters()),
-  lr=LR_ACTOR
-)
-
-opt_critic = optim.Adam(
-    list(agent.value_head.parameters()),
-    lr=LR_CRITIC
-)
 
 def compute_reward(gamestate):
     if gamestate is None:
@@ -295,105 +188,262 @@ def compute_reward(gamestate):
     dist = (dx ** 2 + dy ** 2) ** 0.5
     reward = 1.0 / (dist + 1.0)
     #print(reward)
+
+    
     return reward
 
+def check_port(value):
+    ivalue = int(value)
+    if ivalue < 1 or ivalue > 4:
+        raise argparse.ArgumentTypeError(
+            f"{value} is an invalid controller port. Must be 1, 2, 3, or 4."
+        )
+    return ivalue
 
-count = 0
-num_games = 0
-num_train = 50
-done = False
-action = None
-rollout_steps  = 0
-update_count   = 0
-prev_gamestate = None
-prev_state = None
-prev_action = None
-prev_logp = None
-prev_value = None
-action_counts = [0, 0, 0]
-while True:
+def main():
+    global num_down, num_left, num_right
 
-    gamestate = console.step()
-    if gamestate is None:
-        continue
-    
-    if gamestate is not None and gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
-        controller1.release_all()
-        state = make_obs(gamestate)
-        with torch.no_grad():
-            out = agent(state.unsqueeze(0))
-            logits_x = out['logits_x'].squeeze(0)  # [3]
-            logits_y = out['logits_y'].squeeze(0)  # [3]
-            dist_x = Categorical(logits=logits_x)
-            dist_y = Categorical(logits=logits_y)
-            idx_x = dist_x.sample()  # 0, 1, or 2
-            #action_counts[idx_x] += 1
-            #print("Action counts:", action_counts)
-            idx_y = dist_y.sample()
-            # Map indices to values
-            choices = torch.tensor([-1.0, 0.0, 1.0], device=device)  # choices for joystick
-            action = torch.stack([choices[idx_x], choices[idx_y]])
-            logp = dist_x.log_prob(idx_x) + dist_y.log_prob(idx_y)
-            value = out['value'].item()
+    buffer   = ReplayBufferPPO(ROLLOUT_LEN, obs_dim, n_actions)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-            prev_state = state
-            prev_action = action
-            prev_logp = logp
-            prev_value = value
-            prev_gamestate = gamestate
-        unpack_and_send(controller1, action)
+    parser = argparse.ArgumentParser(description='Run two CPUs vs each other using libmelee')
+    parser.add_argument('--port1', '-p1', type=check_port,
+                        help='Controller port for CPU 1', default=1)
+    parser.add_argument('--port2', '-p2', type=check_port,
+                        help='Controller port for CPU 2', default=2)
+    parser.add_argument('--cpu-level1', type=int, default=9,
+                        help='CPU difficulty for player 1 (0–9)')
+    parser.add_argument('--cpu-level2', type=int, default=9,
+                        help='CPU difficulty for player 2 (0–9)')
+    parser.add_argument('--address', '-a', default="127.0.0.1",
+                        help='IP address of Slippi/Wii')
+    parser.add_argument('--dolphin_executable_path', '-e', default=None,
+                        help='Path to Dolphin executable')
+    parser.add_argument('--iso', default=None, type=str,
+                        help='Path to Melee ISO')
+    args = parser.parse_args()
+
+    # No logging since these are vanilla CPUs
+    console = melee.Console(path=args.dolphin_executable_path,
+                            slippi_address=args.address,
+                            logger=None)
+
+    # Two virtual controllers
+    controller1 = melee.Controller(console=console,
+                                port=args.port1,
+                                type=melee.ControllerType.STANDARD)
+    controller2 = melee.Controller(console=console,
+                                port=args.port2,
+                                type=melee.ControllerType.STANDARD)
+
+    def signal_handler(sig, frame):
+        console.stop()
+        print("Shutting down cleanly…")
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, signal_handler)
+
+    # Launch Dolphin + ISO
+    console.run(iso_path=args.iso)
+
+    print("Connecting to console…")
+    if not console.connect():
+        print("ERROR: Failed to connect to the console.")
+        sys.exit(-1)
+    print("Console connected")
+
+    # Plug in BOTH controllers
+    print(f"Connecting controller on port {args.port1}…")
+    if not controller1.connect():
+        print("ERROR: Failed to connect controller1.")
+        sys.exit(-1)
+    print("Controller1 connected")
+
+    print(f"Connecting controller on port {args.port2}…")
+    if not controller2.connect():
+        print("ERROR: Failed to connect controller2.")
+        sys.exit(-1)
+    print("Controller2 connected")
+
+    costume = 0
+    for _ in range(0,150):
+        gamestate = console.step()
+        if gamestate is None:
+            continue
+
+        # If we're past menus, nothing to do—CPUs play themselves
+        if gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
+            continue
+
+        # In the menus, select both CPUs and then autostart on the second
+        melee.MenuHelper.menu_helper_simple(
+            gamestate,
+            controller1,
+            melee.Character.FOX,
+            melee.Stage.BATTLEFIELD,
+            connect_code='',
+            cpu_level=0,
+            costume=costume,
+            autostart=False,
+            swag=False
+        )
+        melee.MenuHelper.menu_helper_simple(
+            gamestate,
+            controller2,
+            melee.Character.FALCO,
+            melee.Stage.BATTLEFIELD,
+            connect_code='',
+            cpu_level=0,
+            costume=costume,
+            autostart=True,    # <-- start when both have been selected
+            swag=False
+        )
+
+    agent = PPOAgentSimple(obs_dim).to(device)
+
+
+    # opt_actor  = actor = optim.Adam(
+    #     list(agent.shared.parameters())
+    #   + list(agent.button_logits.parameters())
+    #   + list(agent.analog_mu.parameters())
+    #   + [agent.analog_logstd],        # it’s a Parameter, so needs to go in manually
+    #   lr=LR_ACTOR
+    # )
+    opt_actor = optim.Adam(
+        list(agent.shared.parameters())
+    + list(agent.joystick_logits.parameters()),
+    lr=LR_ACTOR
+    )
+
+    opt_critic = optim.Adam(
+        list(agent.value_head.parameters()),
+        lr=LR_CRITIC
+    )
+
+
+    count = 0
+    num_games = 0
+    num_train = 50
+    done = False
+    action = None
+    rollout_steps  = 0
+    update_count   = 0
+    prev_gamestate = None
+    prev_state = None
+    prev_action = None
+    prev_logp = None
+    prev_value = None
+    action_counts = [0, 0, 0]
+    while True:
+
+        gamestate = console.step()
+        if gamestate is None:
+            continue
         
-
-    elif gamestate is not None:
-        melee.MenuHelper.skip_postgame(controller1,gamestate)
-        melee.MenuHelper.skip_postgame(controller2,gamestate)
-        continue
-
-    gamestate = console.step()
-    if gamestate is None:
-        continue
-
-    if gamestate is not None and gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
-        done = False
-        count +=1
-        state = make_obs(gamestate)
-        reward = compute_reward(gamestate)
-        buffer.store(prev_state, prev_action, prev_logp, reward, prev_value)
-        rollout_steps += 1
-
-        if rollout_steps >= ROLLOUT_LEN:
-        # bootstrap last value
-            last_val = 0.0
+        if gamestate is not None and gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
+            controller1.release_all()
+            state = make_obs(gamestate)
             with torch.no_grad():
-                last_val = agent(prev_state.unsqueeze(0))['value'].item()
+                out = agent(state.unsqueeze(0))
+                logits_x = out['logits_x'].squeeze(0)  # [3]
+                logits_y = out['logits_y'].squeeze(0)  # [3]
+                dist_x = Categorical(logits=logits_x)
+                dist_y = Categorical(logits=logits_y)
+                idx_x = dist_x.sample()  # 0, 1, or 2
+                #action_counts[idx_x] += 1
+                #print("Action counts:", action_counts)
+                idx_y = dist_y.sample()
+                # Map indices to values
+                choices = torch.tensor([-1.0, 0.0, 1.0], device=device)  # choices for joystick
+                action = torch.stack([choices[idx_x], choices[idx_y]])
+                logp = dist_x.log_prob(idx_x) + dist_y.log_prob(idx_y)
+                value = out['value'].item()
 
-            buffer.finish_path(last_val)   # compute GAE & returns
-            actor_loss, critic_loss = ppo_update(agent, buffer, opt_actor, opt_critic)
-            buffer.reset()                 # clear out old rollout
-            rollout_steps = 0
-            update_count += 1
-            print(f"[PPO] update {update_count}/{TOTAL_UPDATES}  "
-            f"actor_loss={actor_loss:.4f}  critic_loss={critic_loss:.4f}")
-            count+=1
-            if count%num_train==0:
-                num_games +=1
-                torch.save(agent.state_dict(), f"trained_PPO_pain_{num_games}.pth")
-        continue
-        
-    if gamestate is None:
-        continue
+                prev_state = state
+                prev_action = action
+                prev_logp = logp
+                prev_value = value
+                prev_gamestate = gamestate
+            unpack_and_send(controller1, action)
+            #unpack_and_send_c2(controller2)
+            
 
-    if gamestate is not None:
-        if(done == False and count>0):
-            print("Game ended, pushing last state")
-            if(buffer.ptr>0):
-                buffer.finish_path(last_val=0.0)
+        elif gamestate is not None:
+            melee.MenuHelper.skip_postgame(controller1,gamestate)
+            melee.MenuHelper.skip_postgame(controller2,gamestate)
+            continue
+
+        gamestate = console.step()
+        if gamestate is None:
+            continue
+
+        if gamestate is not None and gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
+            done = False
+            count +=1
+            state = make_obs(gamestate)
+            reward = compute_reward(gamestate)
+            buffer.store(prev_state, prev_action, prev_logp, reward, prev_value)
+            rollout_steps += 1
+
+            if rollout_steps >= ROLLOUT_LEN:
+            # bootstrap last value
+                last_val = 0.0
+                with torch.no_grad():
+                    last_val = agent(prev_state.unsqueeze(0))['value'].item()
+
+                buffer.finish_path(last_val)   # compute GAE & returns
+                actor_loss, critic_loss = ppo_update(agent, buffer, opt_actor, opt_critic)
+                              # clear out old rollout
                 rollout_steps = 0
                 update_count += 1
-                ppo_update(agent, buffer, opt_actor, opt_critic)
-                buffer.reset()
+                avg_reward = buffer.rews[:buffer.ptr].sum().item() if buffer.ptr > 0 else 0.0
+
+                # Print to console
+                print(f"[PPO] update {update_count}/{TOTAL_UPDATES}  "
+                    f"actor_loss={actor_loss:.4f}  critic_loss={critic_loss:.4f}  avg_reward={avg_reward:.4f}")
+
+                # Log to file
+                with open("training_log_PPO.txt", "a") as f:
+                    f.write(f"{update_count},{actor_loss:.6f},{critic_loss:.6f},{avg_reward:.6f}\n")
+                count+=1
+
+                buffer.reset()   
+                if count%num_train==0:
+                    num_games +=1
+                    torch.save(agent.state_dict(), f"trained_PPO_simple_moving_{num_games}.pth")
+            continue
             
-    done = True
-    
-    melee.MenuHelper.skip_postgame(controller1,gamestate)
-    melee.MenuHelper.skip_postgame(controller2,gamestate)
+        if gamestate is None:
+            continue
+
+        if gamestate is not None:
+            if(done == False and count>0):
+                #print("Game ended, pushing last state")
+                if(buffer.ptr>0):
+                    buffer.finish_path(last_val=0.0)
+                    rollout_steps += 1
+                    #update_count += 1
+                    #actor_loss, critic_loss = ppo_update(agent, buffer, opt_actor, opt_critic)
+
+                    # avg_reward = buffer.rews[:buffer.ptr].mean().item() if buffer.ptr > 0 else 0.0
+
+                    # # Print to console
+                    # print(f"[PPO] update {update_count}/{TOTAL_UPDATES}  "
+                    #     f"actor_loss={actor_loss:.4f}  critic_loss={critic_loss:.4f}  avg_reward={avg_reward:.4f}")
+
+                    # # Log to file
+                    # with open("training_log_PPO.txt", "a") as f:
+                    #     f.write(f"{update_count},{actor_loss:.6f},{critic_loss:.6f},{avg_reward:.6f}\n")
+                    
+                    #buffer.reset()   
+                
+        done = True
+
+        num_left = 0
+        num_right = 0
+        num_down = 0
+        
+        melee.MenuHelper.skip_postgame(controller1,gamestate)
+        melee.MenuHelper.skip_postgame(controller2,gamestate)
+if __name__ == "__main__":
+    main()

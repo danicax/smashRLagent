@@ -55,21 +55,23 @@ class ReplayBufferPPO:
             self.returns[t] = gae + vals[t]
 
     def get(self):
-        # normalize advantages
-        advs = self.advs[:self.ptr]
-        advs = (advs - advs.mean()) / (advs.std() + 1e-8)
-        return (
-            self.obs[:self.ptr],
-            self.actions[:self.ptr],
-            self.logps[:self.ptr],
-            self.returns[:self.ptr],
-            advs
-        )
+        # 1) slice out exactly what we stored
+        obs_b, act_b = self.obs[:self.ptr],    self.actions[:self.ptr]
+        logp_b        = self.logps[:self.ptr]
+        ret_b         = self.returns[:self.ptr]
+        adv_b         = self.advs[:self.ptr]
+
+        # 2) normalize advantages with population‐std (unbiased=False)
+        adv_b = (adv_b - adv_b.mean()) / (adv_b.std(unbiased=False) + 1e-8)
+
+        # detach so that nothing here tracks gradients
+        return (obs_b.clone(), act_b.clone(),
+                logp_b.clone(), ret_b.clone(),
+                adv_b.clone())
+    
     def reset(self):
         """Clear the buffer for the next rollout."""
         self.ptr = 0
-        self.obs.zero_()
-        self.actions.zero_()
-        self.logps.zero_()
-        self.rews.zero_()
-        self.vals.zero_()
+        for b in (self.obs, self.actions, self.logps,
+                    self.rews, self.vals, self.advs, self.returns):
+            b.zero_()
