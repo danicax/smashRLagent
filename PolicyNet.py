@@ -18,6 +18,6 @@ class PolicyNet(nn.Module):
         mu     = self.mu(h)               # [B,17]
         mu     = torch.sigmoid(mu)       # use sigmoid to ensure the output is between 0 and 1
         logstd = self.logstd             # [17]
-        logstd = torch.clamp(logstd, min=-20, max=2)
+        logstd = torch.clamp(logstd, min=-5, max=1)
         std    = torch.exp(logstd)
-        return mu, std
+        return Normal(loc=mu, scale=std)

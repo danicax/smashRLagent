@@ -16,12 +16,8 @@ class BCAgent(Agent):
 
     def train(self, states, actions, next_states):
         self.policy_net.train()
-        mu, std = self.policy_net(states)               # mu: [B,17], logstd: [17]
-        dist = Normal(loc=mu, scale=std)
-        
-        # log_prob has shape [B], one log‐prob per sample
+        dist = self.policy_net(states)
         logp    = dist.log_prob(actions).sum(dim=-1)
-        # 4) negative log-likelihood
         loss    = -logp.mean()
 
         
@@ -35,16 +31,13 @@ class BCAgent(Agent):
 
     def predict(self, state):
         self.policy_net.eval()
-        mu, std = self.policy_net(state.unsqueeze(0))
-
-        dist = Normal(loc=mu, scale=std)
+        dist = self.policy_net(state.unsqueeze(0))
         action = dist.sample().squeeze(0)
         return action.cpu().numpy()
 
     def validate(self, states, actions):
         self.policy_net.eval()
-        mu, std = self.policy_net(states)
-        dist = Normal(loc=mu, scale=std)
+        dist = self.policy_net(states)
         logp = dist.log_prob(actions).sum(dim=-1)
         return -logp.sum().item()
         
