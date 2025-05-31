@@ -20,14 +20,18 @@ GAMMA       = 0.99
 LAMBDA      = 0.95
 CLIP_EPS    = 0.2
 LR_ACTOR    = 1e-6
-LR_CRITIC   = 1e-6
+LR_CRITIC   = 1e-5
 ROLLOUT_LEN = 1024
 UPDATE_EPOCHS = 4
 MINI_BATCH  = 64
-TOTAL_UPDATES = 100
+TOTAL_UPDATES = 50
 
-obs_dim = 9
-n_actions = 3
+ENT_COEF_START = 1
+ENT_COEF_END = 0.01
+MAX_GRAD_NORM = 0.5
+
+obs_dim = 4
+n_actions = 2
 
 
 
@@ -73,13 +77,9 @@ n_actions = 3
 #         n_updates += 1
 #     return total_actor_loss / n_updates, total_critic_loss / n_updates
 
-ENT_COEF      = 0.2
-CLIP_EPS      = 0.2
-UPDATE_EPOCHS = 4
-MINI_BATCH    = 64
-MAX_GRAD_NORM = 0.5
 
-def ppo_update(agent, buf, opt_act, opt_crit):
+
+def ppo_update(agent, buf, opt_act, opt_crit, update_count):
     obs_b, act_b, old_logp_b, ret_b, adv_b = buf.get()
     N = obs_b.size(0)
 
@@ -90,7 +90,7 @@ def ppo_update(agent, buf, opt_act, opt_crit):
     choices = torch.tensor([-1.,0.,1.], device=obs_b.device)
     idx_x   = (act_b[:,0:1].unsqueeze(-1) - choices).abs().argmin(-1).squeeze(1)
     idx_y   = (act_b[:,1:2].unsqueeze(-1) - choices).abs().argmin(-1).squeeze(1)
-    a_b     = act_b[:,2]  # A button actions (0 or 1)
+    #a_b     = act_b[:,2]  # A button actions (0 or 1)
 
     total_a, total_c, steps = 0.0, 0.0, 0
 
@@ -109,22 +109,28 @@ def ppo_update(agent, buf, opt_act, opt_crit):
             out       = agent(obs_m)
             logits_x  = out['logits_x']
             logits_y  = out['logits_y']
-            a_logit  = out['a_logit']
+            #a_logit  = out['a_logit']
             vals      = out['value'].squeeze(-1)
 
             dist_x    = Categorical(logits=logits_x)
             dist_y    = Categorical(logits=logits_y)
-            dist_a = Bernoulli(logits=a_logit)
+            #print(dist_x)
+            #dist_a = Bernoulli(logits=a_logit)
 
-            logp_m = dist_x.log_prob(ix_m) + dist_y.log_prob(iy_m) + dist_a.log_prob(a_b[mb])
+            logp_m = dist_x.log_prob(ix_m) + dist_y.log_prob(iy_m)# + dist_a.log_prob(a_b[mb])
 
             ratio     = torch.exp(logp_m - old_lp_m)
 
-            s1        = ratio * adv_m
-            s2        = torch.clamp(ratio,1-CLIP_EPS,1+CLIP_EPS)*adv_m
-            loss_a    = -torch.min(s1, s2).mean()
+            # s1        = ratio * adv_m
+            # s2        = torch.clamp(ratio,1-CLIP_EPS,1+CLIP_EPS)*adv_m
+            # loss_a    = -torch.min(s1, s2).mean()
 
-            # entropy bonus
+            loss_a    = -(ratio*adv_m).mean()
+
+            #entropy bonus
+            progress = min(1.0, update_count / TOTAL_UPDATES)
+            ENT_COEF = ENT_COEF_START + (ENT_COEF_END - ENT_COEF_START) * progress
+
             ent = dist_x.entropy().mean() + dist_y.entropy().mean()
             loss_a -= ENT_COEF * ent
 
@@ -135,7 +141,7 @@ def ppo_update(agent, buf, opt_act, opt_crit):
             opt_act.zero_grad()
             opt_crit.zero_grad()
             (loss_a + loss_c).backward()
-            torch.nn.utils.clip_grad_norm_(agent.parameters(), MAX_GRAD_NORM)
+            #torch.nn.utils.clip_grad_norm_(agent.parameters(), MAX_GRAD_NORM)
             opt_act.step()
             opt_crit.step()
 
@@ -178,12 +184,12 @@ def unpack_and_send(controller, action_tensor):
     # Booleans
     
     main_x, main_y = action_tensor[0].item(), action_tensor[1].item()
-    a_button = action_tensor[2].item()
+    #a_button = action_tensor[2].item()
     #print("ACTION",action_tensor, main_x, main_y)
     controller.tilt_analog_unit(melee.enums.Button.BUTTON_MAIN, main_x, main_y)
 
-    if a_button >= 0.5:
-        controller.press_button(melee.enums.Button.BUTTON_A)
+    # if a_button >= 0.5:
+    #     controller.press_button(melee.enums.Button.BUTTON_A)
 
 
 # MIN DIST REWARD
@@ -197,60 +203,57 @@ def unpack_and_send(controller, action_tensor):
 #     dx = float(p1.position.x) - float(p2.position.x)
 #     dy = float(p1.position.y) - float(p2.position.y)
 #     dist = (dx ** 2 + dy ** 2) ** 0.5
-#     reward = 1.0 / (dist + 1.0)
+#     reward = (1.0 / (dist + 1.0))*10
 #     #print(reward)
-
-    
 #     return reward
 
 # STAY ALIVE REWARD
-# def compute_reward(gamestate):
-#     if gamestate is None:
-#         return 0.0
-    
-#     p1 = gamestate.players[1]
-#     reward = 0.0
-
-#     if p1.position.y>-0.01:
-#         reward+= 0.1
-#     return reward
-
-# DO DMG REWARD
-def compute_reward(prev_gamestate, gamestate):
+def compute_reward(gamestate):
     if gamestate is None:
         return 0.0
     
     p1 = gamestate.players[1]
-    p2 = gamestate.players[2]
+    reward = 0.0
 
-    dx = float(p1.position.x) - float(p2.position.x)
-    dy = float(p1.position.y) - float(p2.position.y)
-    dist = (dx ** 2 + dy ** 2) ** 0.5
-    reward = (1.0 / (dist + 1.0))*0.001
+    reward = float(p1.stock) * 0.01  # Reward for staying alive
+    return reward
 
-    player_stock = 0
-    enemy_stock = 0
+# DO DMG REWARD
+# def compute_reward(prev_gamestate, gamestate):
+#     if gamestate is None:
+#         return 0.0
+    
+#     p1 = gamestate.players[1]
+#     p2 = gamestate.players[2]
 
-    if gamestate.players[1].stock < prev_gamestate.players[1].stock:
-        player_stock = (int(gamestate.players[1].stock) - int(prev_gamestate.players[1].stock))*3
-    if gamestate.players[2].stock < prev_gamestate.players[2].stock:
-        enemy_stock = -(int(gamestate.players[2].stock) - int(prev_gamestate.players[2].stock))*3
+#     dx = float(p1.position.x) - float(p2.position.x)
+#     dy = float(p1.position.y) - float(p2.position.y)
+#     dist = (dx ** 2 + dy ** 2) ** 0.5
+#     reward = (1.0 / (dist + 1.0))*0.001
 
-    player_hp = 0
-    enemy_hp = 0
+#     player_stock = 0
+#     enemy_stock = 0
 
-    if(player_stock == 0):
-        if gamestate.players[1].percent > prev_gamestate.players[1].percent:
-            player_hp = -(float(gamestate.players[1].percent) - float(prev_gamestate.players[1].percent)) * 0.001
-    if(enemy_stock == 0):
-        if gamestate.players[2].percent > prev_gamestate.players[2].percent:
-            enemy_hp = (float(gamestate.players[2].percent) - float(prev_gamestate.players[2].percent)) * 0.001
+#     if gamestate.players[1].stock < prev_gamestate.players[1].stock:
+#         player_stock = (int(gamestate.players[1].stock) - int(prev_gamestate.players[1].stock))*3
+#     if gamestate.players[2].stock < prev_gamestate.players[2].stock:
+#         enemy_stock = -(int(gamestate.players[2].stock) - int(prev_gamestate.players[2].stock))*3
+
+#     player_hp = 0
+#     enemy_hp = 0
+
+#     if(player_stock == 0):
+#         if gamestate.players[1].percent > prev_gamestate.players[1].percent:
+#             player_hp = -(float(gamestate.players[1].percent) - float(prev_gamestate.players[1].percent)) * 0.001
+#     if(enemy_stock == 0):
+#         if gamestate.players[2].percent > prev_gamestate.players[2].percent:
+#             enemy_hp = (float(gamestate.players[2].percent) - float(prev_gamestate.players[2].percent)) * 0.001
 
 
-    reward += player_stock + enemy_stock + player_hp + enemy_hp
+#     reward += player_stock + enemy_stock + player_hp + enemy_hp
 
     
-    return reward
+#     return reward
 
 # def compute_reward(prev_gamestate, gamestate):
 #     if gamestate is None or prev_gamestate is None:
@@ -366,17 +369,17 @@ def main():
         if gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
             continue
 
-        # In the menus, select both CPUs and then autostart on the second
+        #In the menus, select both CPUs and then autostart on the second
         melee.MenuHelper.menu_helper_simple(
-            gamestate,
-            controller1,
-            melee.Character.FOX,
-            melee.Stage.BATTLEFIELD,
-            connect_code='',
-            cpu_level=0,
-            costume=costume,
-            autostart=False,
-            swag=False
+        gamestate,
+        controller1,
+        melee.Character.FOX,
+        melee.Stage.BATTLEFIELD,
+        connect_code='',
+        cpu_level=0,
+        costume=costume,
+        autostart=False,
+        swag=False
         )
         melee.MenuHelper.menu_helper_simple(
             gamestate,
@@ -411,7 +414,7 @@ def main():
         lr=LR_CRITIC
     )
 
-    save_dir = "final_model_PPO_simple_attack"
+    save_dir = "final_model_PPO_stay_alive"
     os.makedirs(save_dir, exist_ok=True)
 
 
@@ -428,61 +431,44 @@ def main():
     prev_logp = None
     prev_value = None
     action_counts = [0, 0, 0]
+    epsilon = 0.1
     while True:
 
         gamestate = console.step()
         if gamestate is None:
             continue
+        #ac_count = [0, 0, 0]
         
         if gamestate is not None and gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
-            # controller1.release_all()
-            # state = make_obs(gamestate)
-            # with torch.no_grad():
-            #     out = agent(state.unsqueeze(0))
-            #     logits_x = out['logits_x'].squeeze(0)  # [3]
-            #     logits_y = out['logits_y'].squeeze(0)  # [3]
-            #     dist_x = Categorical(logits=logits_x)
-            #     dist_y = Categorical(logits=logits_y)
-            #     idx_x = dist_x.sample()  # 0, 1, or 2
-            #     #action_counts[idx_x] += 1
-            #     #print("Action counts:", action_counts)
-            #     idx_y = dist_y.sample()
-            #     # Map indices to values
-            #     choices = torch.tensor([-1.0, 0.0, 1.0], device=device)  # choices for joystick
-            #     action = torch.stack([choices[idx_x], choices[idx_y]])
-            #     logp = dist_x.log_prob(idx_x) + dist_y.log_prob(idx_y)
-            #     value = out['value'].item()
-
-            #     prev_state = state
-            #     prev_action = action
-            #     prev_logp = logp
-            #     prev_value = value
-            #     prev_gamestate = gamestate
-            # unpack_and_send(controller1, action)
-
-            #unpack_and_send_c2(controller2)
-
             controller1.release_all()
             state = make_obs(gamestate)
             with torch.no_grad():
                 out = agent(state.unsqueeze(0))
                 logits_x = out['logits_x'].squeeze(0)  # [3]
                 logits_y = out['logits_y'].squeeze(0)  # [3]
-                a_logit = out['a_logit'].squeeze(0)
-
                 dist_x = Categorical(logits=logits_x)
                 dist_y = Categorical(logits=logits_y)
-                dist_a = Bernoulli(logits=a_logit)
 
-                idx_x = dist_x.sample()  # 0, 1, or 2
+                idx_x = dist_x.sample()
                 #action_counts[idx_x] += 1
                 #print("Action counts:", action_counts)
                 idx_y = dist_y.sample()
-                a_sample = dist_a.sample()
+                #action_counts[idx_y] += 1
+                # if random.random() < epsilon:
+                #     # Random action
+                #     idx_x = torch.randint(0, 3, (1,)).squeeze()
+                #     idx_y = torch.randint(0, 3, (1,)).squeeze()
+                #     print("hi",idx_x, idx_y)
+                # else:
+                #     idx_x = dist_x.sample()  # 0, 1, or 2
+                #     #action_counts[idx_x] += 1
+                #     #print("Action counts:", action_counts)
+                #     idx_y = dist_y.sample()
                 # Map indices to values
+                #print("IDX",idx_x, idx_y)
                 choices = torch.tensor([-1.0, 0.0, 1.0], device=device)  # choices for joystick
-                action = torch.stack([choices[idx_x], choices[idx_y], a_sample])
-                logp = dist_x.log_prob(idx_x) + dist_y.log_prob(idx_y) + dist_a.log_prob(a_sample)
+                action = torch.stack([choices[idx_x], choices[idx_y]])
+                logp = dist_x.log_prob(idx_x) + dist_y.log_prob(idx_y)
                 value = out['value'].item()
 
                 prev_state = state
@@ -491,6 +477,39 @@ def main():
                 prev_value = value
                 prev_gamestate = gamestate
             unpack_and_send(controller1, action)
+
+            #unpack_and_send_c2(controller2)
+
+            #controller1.release_all()
+
+            # state = make_obs(gamestate)
+            # with torch.no_grad():
+            #     out = agent(state.unsqueeze(0))
+            #     logits_x = out['logits_x'].squeeze(0)  # [3]
+            #     logits_y = out['logits_y'].squeeze(0)  # [3]
+            #     a_logit = out['a_logit'].squeeze(0)
+
+            #     dist_x = Categorical(logits=logits_x)
+            #     dist_y = Categorical(logits=logits_y)
+            #     dist_a = Bernoulli(logits=a_logit)
+
+            #     idx_x = dist_x.sample()  # 0, 1, or 2
+            #     #action_counts[idx_x] += 1
+            #     #print("Action counts:", action_counts)
+            #     idx_y = dist_y.sample()
+            #     a_sample = dist_a.sample()
+            #     # Map indices to values
+            #     choices = torch.tensor([-1.0, 0.0, 1.0], device=device)  # choices for joystick
+            #     action = torch.stack([choices[idx_x], choices[idx_y], a_sample])
+            #     logp = dist_x.log_prob(idx_x) + dist_y.log_prob(idx_y) + dist_a.log_prob(a_sample)
+            #     value = out['value'].item()
+
+            #     prev_state = state
+            #     prev_action = action
+            #     prev_logp = logp
+            #     prev_value = value
+            #     prev_gamestate = gamestate
+            # unpack_and_send(controller1, action)
             
 
         elif gamestate is not None:
@@ -506,7 +525,8 @@ def main():
             done = False
             count +=1
             state = make_obs(gamestate)
-            reward = compute_reward(prev_gamestate,gamestate)
+            #reward = compute_reward(prev_gamestate,gamestate)
+            reward = compute_reward(gamestate)
             buffer.store(prev_state, prev_action, prev_logp, reward, prev_value)
             rollout_steps += 1
 
@@ -517,7 +537,7 @@ def main():
                     last_val = agent(prev_state.unsqueeze(0))['value'].item()
 
                 buffer.finish_path(last_val)   # compute GAE & returns
-                actor_loss, critic_loss = ppo_update(agent, buffer, opt_actor, opt_critic)
+                actor_loss, critic_loss = ppo_update(agent, buffer, opt_actor, opt_critic,update_count)
                               # clear out old rollout
                 rollout_steps = 0
                 update_count += 1
@@ -533,7 +553,7 @@ def main():
                 count+=1
 
                 buffer.reset()   
-                torch.save(agent.state_dict(), os.path.join(save_dir, f"FINAL_PPO_simple_attack_{update_count}.pth"))
+                torch.save(agent.state_dict(), os.path.join(save_dir, f"FINAL_PPO_simple_stay_alive_{update_count}.pth"))
 
                 if( update_count >= TOTAL_UPDATES):
                     return;
@@ -564,10 +584,6 @@ def main():
                     #buffer.reset()   
                 
         done = True
-
-        num_left = 0
-        num_right = 0
-        num_down = 0
         
         melee.MenuHelper.skip_postgame(controller1,gamestate)
         melee.MenuHelper.skip_postgame(controller2,gamestate)

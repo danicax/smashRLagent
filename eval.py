@@ -12,7 +12,7 @@ import torch.nn.functional as F
 from torch.distributions import Categorical
 import argparse
 import signal
-from util import make_obs
+from util import make_obs, make_obs_simple
 # from PolicyNet import PolicyNet
 # from QNet import QNet
 # from PolicyNet import PolicyNet
@@ -106,8 +106,8 @@ def unpack_and_send(controller, action_tensor):
 #         return action  # Integer action index
 
 #agent = PPOAgent(obs_dim=70, n_buttons=11, n_analogs=6)
-agent = PPOAgentSimple(obs_dim=70)
-state_dict = torch.load("trained_PPO_pain_17.pth", map_location="cpu")
+agent = PPOAgentSimple(obs_dim=5)
+state_dict = torch.load("final_model_PPO_simple_stay_alive\FINAL_PPO_simple_stay_alive_50.pth", map_location="cpu")
 agent.load_state_dict(state_dict)
 agent.eval()
 
@@ -126,13 +126,18 @@ agent.eval()
     
 def policy(obs):
     with torch.no_grad():
-        out = agent(obs.unsqueeze(0))  # Add batch dimension
-        mu = out['mu'].squeeze(0)      # [2]
-        # For deterministic: use mu; for stochastic: sample from Normal
-        # std = out['logstd'].exp()
-        # dist = Normal(mu, std)
-        # action = dist.sample()
-        action = mu  # deterministic
+        out = agent(obs.unsqueeze(0))
+        logits_x = out['logits_x'].squeeze(0)  # [3]
+        logits_y = out['logits_y'].squeeze(0)  # [3]
+        dist_x = Categorical(logits=logits_x)
+        dist_y = Categorical(logits=logits_y)
+        idx_x = dist_x.sample()  # 0, 1, or 2
+        #action_counts[idx_x] += 1
+        #print("Action counts:", action_counts)
+        idx_y = dist_y.sample()
+        # Map indices to values
+        choices = torch.tensor([-1.0, 0.0, 1.0])  # choices for joystick
+        action = torch.stack([choices[idx_x], choices[idx_y]])
         return action
 
 
@@ -252,7 +257,7 @@ while True:
         continue
     
     if gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
-        obs = make_obs(gamestate)
+        obs = make_obs_simple(gamestate)
         #act = agent.predict(obs)
         #if prev_gamestate is not None and gamestate is not None:
         act = policy(obs)

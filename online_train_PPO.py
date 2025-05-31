@@ -351,10 +351,7 @@ while True:
             print("Game ended, pushing last state")
             if(buffer.ptr>0):
                 buffer.finish_path(last_val=0.0)
-                rollout_steps = 0
-                update_count += 1
-                ppo_update(agent, buffer, opt_actor, opt_critic)
-                buffer.reset()
+                rollout_steps += 1
             
     done = True
     

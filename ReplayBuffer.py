@@ -56,7 +56,8 @@ class ReplayBufferPPO:
 
     def get(self):
         # 1) slice out exactly what we stored
-        obs_b, act_b = self.obs[:self.ptr],    self.actions[:self.ptr]
+        obs_b  = self.obs[:self.ptr]
+        act_b = self.actions[:self.ptr]
         logp_b        = self.logps[:self.ptr]
         ret_b         = self.returns[:self.ptr]
         adv_b         = self.advs[:self.ptr]

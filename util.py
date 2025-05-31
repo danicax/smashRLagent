@@ -100,8 +100,8 @@ def make_obs_simple(gamestate):
     # 1) Player features extractor (17 floats each)
     def player_feats(p):
         return [
-            float(p.stock),
-            float(p.percent),
+            #float(p.stock),
+            #float(p.percent),
             p.position.x,
             p.position.y,
             # float(p.character.value),
@@ -126,10 +126,10 @@ def make_obs_simple(gamestate):
     #f2 = [float(gamestate.players.get(2).character.value)]
 
     # 2) Stage as one float
-    stage_feat = [float(gamestate.stage.value)]
+    #stage_feat = [float(gamestate.stage.value)]
 
 
-    all_feats = f1 + f2 + stage_feat
+    all_feats = f1 + f2# + stage_feat
     return torch.tensor(all_feats, dtype=torch.float32)
 
 def get_controller_state(controller_state):
