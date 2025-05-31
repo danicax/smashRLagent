@@ -73,7 +73,7 @@ n_actions = 3
 #         n_updates += 1
 #     return total_actor_loss / n_updates, total_critic_loss / n_updates
 
-ENT_COEF      = 0.1
+ENT_COEF      = 0.2
 CLIP_EPS      = 0.2
 UPDATE_EPOCHS = 4
 MINI_BATCH    = 64
@@ -217,16 +217,22 @@ def unpack_and_send(controller, action_tensor):
 
 # DO DMG REWARD
 def compute_reward(prev_gamestate, gamestate):
-    if gamestate is None or prev_gamestate is None:
+    if gamestate is None:
         return 0.0
-    # Example: reward based on stock difference
+    
+    p1 = gamestate.players[1]
+    p2 = gamestate.players[2]
+
+    dx = float(p1.position.x) - float(p2.position.x)
+    dy = float(p1.position.y) - float(p2.position.y)
+    dist = (dx ** 2 + dy ** 2) ** 0.5
+    reward = (1.0 / (dist + 1.0))*0.001
+
     player_stock = 0
     enemy_stock = 0
 
     if gamestate.players[1].stock < prev_gamestate.players[1].stock:
-        
         player_stock = (int(gamestate.players[1].stock) - int(prev_gamestate.players[1].stock))*3
-        #print("DEATH", player_stock)
     if gamestate.players[2].stock < prev_gamestate.players[2].stock:
         enemy_stock = -(int(gamestate.players[2].stock) - int(prev_gamestate.players[2].stock))*3
 
@@ -241,11 +247,41 @@ def compute_reward(prev_gamestate, gamestate):
             enemy_hp = (float(gamestate.players[2].percent) - float(prev_gamestate.players[2].percent)) * 0.001
 
 
-    reward = player_stock + enemy_stock + player_hp + enemy_hp
+    reward += player_stock + enemy_stock + player_hp + enemy_hp
+
     
-    # if reward != 0:
-    #     print("REWARD",reward)
     return reward
+
+# def compute_reward(prev_gamestate, gamestate):
+#     if gamestate is None or prev_gamestate is None:
+#         return 0.0
+#     # Example: reward based on stock difference
+#     player_stock = 0
+#     enemy_stock = 0
+
+#     if gamestate.players[1].stock < prev_gamestate.players[1].stock:
+        
+#         player_stock = (int(gamestate.players[1].stock) - int(prev_gamestate.players[1].stock))*3
+#         #print("DEATH", player_stock)
+#     if gamestate.players[2].stock < prev_gamestate.players[2].stock:
+#         enemy_stock = -(int(gamestate.players[2].stock) - int(prev_gamestate.players[2].stock))*3
+
+#     player_hp = 0
+#     enemy_hp = 0
+
+#     if(player_stock == 0):
+#         if gamestate.players[1].percent > prev_gamestate.players[1].percent:
+#             player_hp = -(float(gamestate.players[1].percent) - float(prev_gamestate.players[1].percent)) * 0.001
+#     if(enemy_stock == 0):
+#         if gamestate.players[2].percent > prev_gamestate.players[2].percent:
+#             enemy_hp = (float(gamestate.players[2].percent) - float(prev_gamestate.players[2].percent)) * 0.001
+
+
+#     reward = player_stock + enemy_stock + player_hp + enemy_hp
+    
+#     # if reward != 0:
+#     #     print("REWARD",reward)
+#     return reward
 
 def check_port(value):
     ivalue = int(value)
