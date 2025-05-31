@@ -24,7 +24,7 @@ LR_CRITIC   = 1e-6
 ROLLOUT_LEN = 1024
 UPDATE_EPOCHS = 4
 MINI_BATCH  = 64
-TOTAL_UPDATES = 1000
+TOTAL_UPDATES = 50
 
 obs_dim = 5
 n_actions = 2
@@ -176,6 +176,25 @@ def unpack_and_send(controller, action_tensor):
     #print("ACTION",action_tensor, main_x, main_y)
     controller.tilt_analog_unit(melee.enums.Button.BUTTON_MAIN, main_x, main_y)
 
+
+# MIN DIST REWARD
+# def compute_reward(gamestate):
+#     if gamestate is None:
+#         return 0.0
+    
+#     p1 = gamestate.players[1]
+#     p2 = gamestate.players[2]
+
+#     dx = float(p1.position.x) - float(p2.position.x)
+#     dy = float(p1.position.y) - float(p2.position.y)
+#     dist = (dx ** 2 + dy ** 2) ** 0.5
+#     reward = 1.0 / (dist + 1.0)
+#     #print(reward)
+
+    
+#     return reward
+
+# STAY ALIVE REWARD
 def compute_reward(gamestate):
     if gamestate is None:
         return 0.0
@@ -183,13 +202,10 @@ def compute_reward(gamestate):
     p1 = gamestate.players[1]
     p2 = gamestate.players[2]
 
-    dx = float(p1.position.x) - float(p2.position.x)
-    dy = float(p1.position.y) - float(p2.position.y)
-    dist = (dx ** 2 + dy ** 2) ** 0.5
-    reward = 1.0 / (dist + 1.0)
-    #print(reward)
+    reward = 0.0
 
-    
+    if p1.position.y>-0.01:
+        reward+= 0.1
     return reward
 
 def check_port(value):
@@ -320,6 +336,9 @@ def main():
         lr=LR_CRITIC
     )
 
+    save_dir = "final_model_PPO_simple_stay_alive"
+    os.makedirs(save_dir, exist_ok=True)
+
 
     count = 0
     num_games = 0
@@ -408,9 +427,10 @@ def main():
                 count+=1
 
                 buffer.reset()   
-                if count%num_train==0:
-                    num_games +=1
-                    torch.save(agent.state_dict(), f"trained_PPO_simple_moving_{num_games}.pth")
+                torch.save(agent.state_dict(), os.path.join(save_dir, f"FINAL_PPO_simple_stay_alive_{update_count}.pth"))
+
+                if( update_count >= TOTAL_UPDATES):
+                    return;
             continue
             
         if gamestate is None:

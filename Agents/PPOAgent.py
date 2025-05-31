@@ -43,11 +43,6 @@ class PPOAgentSimple(nn.Module):
         self.joystick_logits = nn.Linear(hid, 6)
         self.value_head = nn.Linear(hid, 1)
 
-        with torch.no_grad():
-            self.joystick_logits.bias.zero_()  # set all to 0
-            self.joystick_logits.bias[1] = 2 # x-axis center (index 1)
-            self.joystick_logits.bias[4] = 2 # y-axis center (index 4)
-
     def forward(self, x):
         h = self.shared(x)
         logits = self.joystick_logits(h)  # [batch, 6]
