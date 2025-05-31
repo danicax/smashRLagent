@@ -108,6 +108,8 @@ for _ in range(0,150):
     )
 while True:
     gamestate = console.step()
+    if gamestate is None:
+        continue
     if gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
         continue
     melee.MenuHelper.skip_postgame(controller1,gamestate)

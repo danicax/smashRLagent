@@ -23,6 +23,9 @@ from torch.distributions import Bernoulli, Normal
 move_inputs = {
     # No-stick normals
     "Jab":            [1,0,0,0,0,0,0,0,0,0,0,   0.5,0.5,0.5,0.5,0.5,0.5],
+    "LJab":            [1,0,0,0,0,0,0,0,0,0,0,   0,0.5,0.5,0.5,0.5,0.5],
+    "RJab":            [1,0,0,0,0,0,0,0,0,0,0,   1,0.5,0.5,0.5,0.5,0.5],
+
     "Neutral Tilt":   [1,0,0,0,0,0,0,0,0,0,0,   0.5,0.5,0.5,0.5,0.5,0.5],
 
     # Movement normals
@@ -54,8 +57,16 @@ move_inputs = {
     "Up B":           [0,1,0,0,0,0,0,0,0,0,0,   0.5,1.0,0.5,0.5,0.5,0.5],
     "Down B":         [0,1,0,0,0,0,0,0,0,0,0,   0.5,0.0,0.5,0.5,0.5,0.5],
 
+    "LSide B →":       [0,1,0,0,0,0,0,0,0,0,0,   0.75,0.5,0.5,0.5,0.5,0.5],
+    "RSide B ←":       [0,1,0,0,0,0,0,0,0,0,0,   0.25,0.5,0.5,0.5,0.5,0.5],
+    "LUp B":           [0,1,0,0,0,0,0,0,0,0,0,   0.75,1.0,0.5,0.5,0.5,0.5],
+    "RUp B":           [0,1,0,0,0,0,0,0,0,0,0,   0.25,1.0,0.5,0.5,0.5,0.5],
+
     # Grabs & Throws
     "Grab":           [0,0,0,0,0,0,0,0,0,0,1,   0.5,0.5,0.5,0.5,0.5,0.5],
+    "LGrab":           [0,0,0,0,0,0,0,0,0,0,1,   0,0.5,0.5,0.5,0.5,0.5],
+    "RGrab":           [0,0,0,0,0,0,0,0,0,0,1,   1,0.5,0.5,0.5,0.5,0.5],
+
     "Pummel":         [1,0,0,0,0,0,0,0,0,0,1,   0.5,0.5,0.5,0.5,0.5,0.5],
     "Forward Throw":  [1,0,0,0,0,0,0,0,0,0,1,   1.0,0.5,0.5,0.5,0.5,0.5],
     "Back Throw":     [1,0,0,0,1,0,0,0,0,0,1,   0.0,0.5,0.5,0.5,0.5,0.5],
@@ -70,6 +81,8 @@ move_inputs = {
     # Aerial jump
     # (tap Y in neutral)
     "Jump":        [0,0,0,0,0,0,0,0,0,1,0,   0.5,0.5,0.5,0.5,0.5,0.5],
+    "LJump":        [0,0,0,0,0,0,0,0,0,1,0,   0.0,0.5,0.5,0.5,0.5,0.5],
+    "RJump":        [0,0,0,0,0,0,0,0,0,1,0,   1.0,0.5,0.5,0.5,0.5,0.5],
 }
 ACTIONS = torch.tensor(list(move_inputs.values()), dtype=torch.float32)
 
@@ -83,13 +96,13 @@ target_q = QNet(obs_dim=70, n_actions=N_ACTIONS).to(device)
 target_q.load_state_dict(q_net.state_dict())
 opt      = optim.Adam(q_net.parameters(), lr=1e-4)
 buffer   = ReplayBuffer()
-eps_start, eps_end, eps_decay = 1.0, 0.5, 10_000
+eps_start, eps_end, eps_decay = 1.0, 0.1, 1_000
 gamma = 0.99
 update_target_every = 1000
 step = 0
 batch_size = 32
 
-def compute_epsilon(step, eps_start=1.0, eps_end=0.5, eps_decay=10_000):
+def compute_epsilon(step, eps_start=1.0, eps_end=0.1, eps_decay=1_000):
     """
     Exponentially decay ε from eps_start→eps_end over eps_decay steps.
     After many steps, ε → eps_end.
@@ -107,7 +120,7 @@ def unpack_and_send(controller, action_tensor):
     controller.release_all()
 
     # Booleans
-    print("ACTION",action_tensor)
+    #print("ACTION",action_tensor)
     btns = [
         melee.enums.Button.BUTTON_A, melee.enums.Button.BUTTON_B, melee.enums.Button.BUTTON_D_DOWN,
         melee.enums.Button.BUTTON_D_LEFT, melee.enums.Button.BUTTON_D_RIGHT,melee.enums. Button.BUTTON_D_UP,
@@ -245,7 +258,7 @@ for _ in range(0,150):
         melee.Character.FALCO,
         melee.Stage.BATTLEFIELD,
         connect_code='',
-        cpu_level=9,
+        cpu_level=0,
         costume=costume,
         autostart=True,    # <-- start when both have been selected
         swag=False
@@ -262,59 +275,97 @@ def compute_reward(prev_gamestate, gamestate):
         return 0.0
 
     # Example: reward based on stock difference
-    player_stock = (gamestate.players[1].stock - prev_gamestate.players[1].stock) * 10.0
-    enemy_stock = -(gamestate.players[2].stock - prev_gamestate.players[2].stock) * 10.0
+    # player_stock = 0
+    # enemy_stock = 0
 
-    player_hp = 0
-    enemy_hp = 0
+    # if gamestate.players[1].stock < prev_gamestate.players[1].stock:
+        
+    #     player_stock = (int(gamestate.players[1].stock) - int(prev_gamestate.players[1].stock)) * 10.0
+    #     #print("DEATH", player_stock)
+    # if gamestate.players[2].stock < prev_gamestate.players[2].stock:
+    #     enemy_stock = -(int(gamestate.players[2].stock) - int(prev_gamestate.players[2].stock)) * 10.0
 
-    if(player_stock == 0):
-        player_hp = -(gamestate.players[1].percent - prev_gamestate.players[1].percent) * 0.1
-    if(enemy_stock == 0):
-        enemy_hp = (gamestate.players[2].percent - prev_gamestate.players[2].percent) * 0.1
+    # player_hp = 0
+    # enemy_hp = 0
+
+    # if(player_stock == 0):
+    #     if gamestate.players[1].percent > prev_gamestate.players[1].percent:
+    #         player_hp = -(float(gamestate.players[1].percent) - float(prev_gamestate.players[1].percent)) * 0.1
+    # if(enemy_stock == 0):
+    #     if gamestate.players[2].percent > prev_gamestate.players[2].percent:
+    #         enemy_hp = (float(gamestate.players[2].percent) - float(prev_gamestate.players[2].percent)) * 0.1
 
 
-    reward = player_stock + enemy_stock + player_hp + enemy_hp
+    # reward = player_stock + enemy_stock + player_hp + enemy_hp
+
+    
+    p1 = gamestate.players[1]
+    p2 = gamestate.players[2]
+
+    dx = float(p1.position.x) - float(p2.position.x)
+    dy = float(p1.position.y) - float(p2.position.y)
+    dist = (dx ** 2 + dy ** 2) ** 0.5
+    reward = 1.0 / (dist + 1.0)
+    print(reward)
+
+    reward = 0.0
+    
+    # if reward<0:
+    #     print("Reward: ", reward, "Player Stock: ", player_stock, "Enemy Stock: ", enemy_stock, "Player HP: ", player_hp, "Enemy HP: ", enemy_hp)
     return reward
 
-def check_done(gamestate):
-    # Check if the game is over
-    if gamestate.menu_state in [melee.Menu.POSTGAME_SCORES]:
-        return True
-    return False
 
 count = 0
+num_games = 0
+num_train = 5000
+done = False
 while True:
 
+    
     if gamestate is None:
         continue
 
     prev_gamestate = gamestate
-    if prev_gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
-        print("ACTION",action_idx)
+    
+    if prev_gamestate is not None and prev_gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
+
         unpack_and_send(controller1, ACTIONS[action_idx])
         prev_state = make_obs(prev_gamestate)
+    # elif prev_gamestate is not None:
+    #     print("NONE")
 
     gamestate = console.step()
-    if gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
+
+    if gamestate is not None and gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
+        done = False
         count +=1
         if prev_gamestate is None or prev_state is None:
             continue
         state = make_obs(gamestate)
         reward = compute_reward(prev_gamestate, gamestate)
-        done = check_done(gamestate)
-
+        
+        # if len(buffer) == 0 or buffer.buf[-1][4]==False:
+        #     if done:
+        #         print("PUSHING DONE")
         buffer.push(prev_state, action_idx, reward, state, done)
 
         # update Q
         if len(buffer) >= batch_size:
-            batch = buffer.sample(batch_size)
-            states, actions, rewards, next_states, dones = batch
+           
+            states, actions, rewards, next_states, dones = buffer.sample(batch_size)
 
             # Compute the target Q-values
             with torch.no_grad():
-                target_q_values = target_q(next_states).max(1)[0]
-                target_q_values = rewards + (1 - dones) * gamma * target_q_values
+            #     target_q_values = target_q(next_states).max(1)[0]
+            #     target_q_values = rewards + gamma * target_q_values
+            #with double DQN
+                best_next_a    = q_net(next_states).argmax(dim=1, keepdim=True)  # [B,1]
+
+                # 2) target network evaluates that action
+                next_q_target  = target_q(next_states).gather(1, best_next_a).squeeze(1)  # [B]
+
+                # 3) form the Double-DQN target
+                target_q_values = rewards + (1-dones)*gamma * next_q_target
 
             # Compute the current Q-values
             q_values = q_net(states).gather(1, actions.unsqueeze(1)).squeeze(1)
@@ -326,6 +377,12 @@ while True:
             opt.zero_grad()
             loss.backward()
             opt.step()
+            if count % update_target_every == 0:
+                print(f"Step {count}, Loss: {loss.item():.4f}")
+                target_q.load_state_dict(q_net.state_dict())
+            if count%num_train==0:
+                num_games +=1
+                torch.save(q_net.state_dict(), f"trained_double_qnet_simple_{num_games}.pth")
 
         # exploration/exploitation
 
@@ -337,14 +394,22 @@ while True:
                 q_vals = q_net(state)  # [1, N_ACTIONS]
                 action_idx = q_vals.argmax().item()
         
-
-        if done:
-            prev_gamestate = None
-            prev_state = None
-            action_idx = random.randrange(N_ACTIONS)
-
         continue
 
+    if gamestate is not None:
+        if(done == False):
+            print("Game ended, pushing last state")
+            if(len(buffer) > 0 and buffer.buf[-1][4]==False):
+                buffer.buf[-1] = (buffer.buf[-1][0], buffer.buf[-1][1], buffer.buf[-1][2], buffer.buf[-1][3], True)
+        done = True
+        #print("NONE")
+
+        # done = True
+        # prev_gamestate = None
+        # prev_state = None
+        # action_idx = random.randrange(N_ACTIONS)
+    if gamestate is None:
+        continue
     
     melee.MenuHelper.skip_postgame(controller1,gamestate)
     melee.MenuHelper.skip_postgame(controller2,gamestate)
