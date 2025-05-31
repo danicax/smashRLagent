@@ -12,18 +12,18 @@ class IQLAgent(Agent):
     def __init__(self, obs_dim, act_dim, device="cpu", gamma=0.99, iql_expectile=0.9, AWAC_lambda=0.1, param_update_freq=1000):
         super(IQLAgent, self).__init__()
         self.Qnet = nn.Sequential(
-            nn.Linear(obs_dim+act_dim, 128), nn.ReLU(),
-            nn.Linear(128,      128), nn.ReLU(),
+            nn.Linear(obs_dim+act_dim, 128), nn.BatchNorm1d(128), nn.ReLU(),
+            nn.Linear(128,      128), nn.BatchNorm1d(128), nn.ReLU(),
             nn.Linear(128, 1)
         ).to(device)
         self.Qtarget = nn.Sequential(
-            nn.Linear(obs_dim+act_dim, 128), nn.ReLU(),
-            nn.Linear(128,      128), nn.ReLU(),
+            nn.Linear(obs_dim+act_dim, 128), nn.BatchNorm1d(128), nn.ReLU(),
+            nn.Linear(128,      128), nn.BatchNorm1d(128), nn.ReLU(),
             nn.Linear(128, 1)
         ).to(device)
         self.Vnet = nn.Sequential(
-            nn.Linear(obs_dim, 128), nn.ReLU(),
-            nn.Linear(128,      128), nn.ReLU(),
+            nn.Linear(obs_dim, 128), nn.BatchNorm1d(128), nn.ReLU(),
+            nn.Linear(128,      128), nn.BatchNorm1d(128), nn.ReLU(),
             nn.Linear(128, 1)
         ).to(device)
         self.policy = PolicyNet(obs_dim, act_dim).to(device)
@@ -82,6 +82,7 @@ class IQLAgent(Agent):
         loss = torch.mean(self.expectile_loss(Q - V))
 
         self.Voptimizer.zero_grad()
+        torch.nn.utils.clip_grad_norm_(self.Vnet.parameters(), 1.0)
         loss.backward()
         self.Voptimizer.step()
 
@@ -91,11 +92,17 @@ class IQLAgent(Agent):
         with torch.no_grad():
             V = self.Vnet(next_states)
             target = self.reward_function(states, actions, next_states).unsqueeze(-1) + self.gamma * V
+
+        # if target.max() > 1:
+        #     print(target)
+
         Q = self.Qnet(torch.cat([states, actions], dim=-1))
         loss = torch.nn.functional.mse_loss(Q, target)
 
         self.Qoptimizer.zero_grad()
         loss.backward()
+        # gradient clipping
+        torch.nn.utils.clip_grad_norm_(self.Qnet.parameters(), 1.0)
         self.Qoptimizer.step()
 
         return loss.item()
@@ -145,4 +152,3 @@ class IQLAgent(Agent):
         action[-2] = action[-2] if action[-2] > 0.2 else 0
         action[-1] = action[-1] if action[-1] > 0.2 else 0
         return action.cpu().numpy()
-
