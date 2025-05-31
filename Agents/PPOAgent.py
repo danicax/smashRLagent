@@ -31,6 +31,29 @@ class PPOAgent(nn.Module):
             'value' : self.value_head(h).squeeze(-1)
         }
     
+# class PPOAgentSimple(nn.Module):
+#     def __init__(self, obs_dim):
+#         super().__init__()
+#         hid = 128
+#         self.shared = nn.Sequential(
+#             nn.Linear(obs_dim, hid), nn.ReLU(),
+#             nn.Linear(hid, hid),     nn.ReLU(),
+#         )
+#         # 3 logits for x, 3 logits for y
+#         self.joystick_logits = nn.Linear(hid, 6)
+#         self.value_head = nn.Linear(hid, 1)
+
+#     def forward(self, x):
+#         h = self.shared(x)
+#         logits = self.joystick_logits(h)  # [batch, 6]
+#         logits_x = logits[:, :3]          # [batch, 3]
+#         logits_y = logits[:, 3:]          # [batch, 3]
+#         return {
+#             'logits_x': logits_x,
+#             'logits_y': logits_y,
+#             'value': self.value_head(h).squeeze(-1)
+#         }
+
 class PPOAgentSimple(nn.Module):
     def __init__(self, obs_dim):
         super().__init__()
@@ -39,17 +62,19 @@ class PPOAgentSimple(nn.Module):
             nn.Linear(obs_dim, hid), nn.ReLU(),
             nn.Linear(hid, hid),     nn.ReLU(),
         )
-        # 3 logits for x, 3 logits for y
         self.joystick_logits = nn.Linear(hid, 6)
+        self.a_button_logit = nn.Linear(hid, 1)  # <--- Add this line
         self.value_head = nn.Linear(hid, 1)
 
     def forward(self, x):
         h = self.shared(x)
-        logits = self.joystick_logits(h)  # [batch, 6]
-        logits_x = logits[:, :3]          # [batch, 3]
-        logits_y = logits[:, 3:]          # [batch, 3]
+        logits = self.joystick_logits(h)
+        logits_x = logits[:, :3]
+        logits_y = logits[:, 3:]
+        a_logit = self.a_button_logit(h).squeeze(-1)  # [batch]
         return {
             'logits_x': logits_x,
             'logits_y': logits_y,
+            'a_logit': a_logit,
             'value': self.value_head(h).squeeze(-1)
         }
