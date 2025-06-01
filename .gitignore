@@ -7,3 +7,5 @@ run.sh
 tonys_data/
 log.txt
 /*.pth
+models/
+logs/

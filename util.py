@@ -6,6 +6,7 @@ import torch
 import pickle
 import json
 import multiprocessing as mp
+import sys
 
 def make_obs(gamestate, max_projectiles=5):
     # 1) Player features extractor (17 floats each)
@@ -158,3 +159,94 @@ def get_controller_state(controller_state):
         ], dtype=torch.float32)
     return act
 
+
+def connect_to_console(args):
+    console = melee.Console(path=args.dolphin_executable_path,
+                            slippi_address=args.address,
+                            logger=None)
+
+    # Two virtual controllers
+    controller1 = melee.Controller(console=console,
+                                port=args.port1,
+                                type=melee.ControllerType.STANDARD)
+    controller2 = melee.Controller(console=console,
+                                port=args.port2,
+                                type=melee.ControllerType.STANDARD)
+    
+    console.run(iso_path=args.iso)
+
+    # print("Connecting to console…")
+    if not console.connect():
+        print("ERROR: Failed to connect to the console.")
+        sys.exit(-1)
+    # print("Console connected")
+
+    # Plug in BOTH controllers
+    # print(f"Connecting controller on port {args.port1}…")
+    if not controller1.connect():
+        print("ERROR: Failed to connect controller1.")
+        sys.exit(-1)
+    # print("Controller1 connected")
+
+    # print(f"Connecting controller on port {args.port2}…")
+    if not controller2.connect():
+        print("ERROR: Failed to connect controller2.")
+        sys.exit(-1)
+    # print("Controller2 connected")
+
+    return console, controller1, controller2
+
+
+def unpack_and_send_simple(controller, action_tensor):
+    """
+    action_tensor: FloatTensor of shape [2] for main stick [x, y]
+    """
+    controller.release_all()
+    main_x, main_y = action_tensor[0].item(), action_tensor[1].item()
+    
+    # normalize the main stick
+    if 0.25 < main_y < 0.75: 
+        main_y = 0.5
+
+    controller.tilt_analog(melee.enums.Button.BUTTON_MAIN, main_x, main_y)
+
+# MIN DIST REWARD
+def compute_reward(gamestate):
+    if gamestate is None:
+        return 0.0
+    
+    p1 = gamestate.players[1]
+    p2 = gamestate.players[2]
+
+    dx = float(p1.position.x) - float(p2.position.x)
+    dy = float(p1.position.y) - float(p2.position.y)
+    dist = (dx ** 2 + dy ** 2) ** 0.5
+    reward = (1.0 / (dist + 1.0))*10
+    #print(reward)
+    return reward
+
+
+def menu_helper(gamestate, controller1, controller2):
+    # In the menus, select both CPUs and then autostart on the second
+    melee.MenuHelper.menu_helper_simple(
+        gamestate,
+        controller1,
+        melee.Character.FOX,
+        melee.Stage.FINAL_DESTINATION,
+        connect_code='',
+        cpu_level=0,
+        costume=0,
+        autostart=True,
+        swag=False
+    )
+    melee.MenuHelper.menu_helper_simple(
+        gamestate,
+        controller2,
+        melee.Character.FALCO,
+        melee.Stage.FINAL_DESTINATION,
+        connect_code='',
+        cpu_level=0,
+        costume=0,
+        autostart=True,
+        swag=False
+    )
