@@ -197,33 +197,98 @@ def connect_to_console(args):
     return console, controller1, controller2
 
 
+# def unpack_and_send_simple(controller, action_tensor):
+#     """
+#     action_tensor: FloatTensor of shape [2] for main stick [x, y]
+#     """
+#     controller.release_all()
+#     main_x, main_y = action_tensor[0].item(), action_tensor[1].item()
+    
+
+#     print(main_x, main_y)
+#     # normalize the main stick
+#     if 0.25 < main_y < 0.75: 
+#         main_y = 0.5
+
+#     controller.tilt_analog(melee.enums.Button.BUTTON_MAIN, main_x, main_y)
+
 def unpack_and_send_simple(controller, action_tensor):
     """
     action_tensor: FloatTensor of shape [2] for main stick [x, y]
     """
+    print(action_tensor)
     controller.release_all()
-    main_x, main_y = action_tensor[0].item(), action_tensor[1].item()
-    
-    # normalize the main stick
-    if 0.25 < main_y < 0.75: 
-        main_y = 0.5
+    main_x, button_x = action_tensor[0].item(), action_tensor[1].item()
 
-    controller.tilt_analog(melee.enums.Button.BUTTON_MAIN, main_x, main_y)
+    if button_x >= 0.5:
+        controller.press_button(melee.enums.Button.BUTTON_X)
+
+    # print(main_x, main_y)
+    # normalize the main stick
+
+    controller.tilt_analog(melee.enums.Button.BUTTON_MAIN, main_x, 0.5)
+
 
 # MIN DIST REWARD
+# def compute_reward(gamestate):
+#     if gamestate is None:
+#         return 0.0
+    
+#     if gamestate.menu_state not in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
+#         return 0.0
+    
+#     p1 = gamestate.players[1]
+#     p2 = gamestate.players[2]
+
+#     dx = float(p1.position.x) - float(p2.position.x)
+#     dy = float(p1.position.y) - float(p2.position.y)
+#     dist = (dx ** 2 + dy ** 2) ** 0.5
+#     reward = (1.0 / (dist + 1.0))*10
+#     #print(reward)
+#     return reward
+
+# social distancing reward
+# def compute_reward(gamestate):
+#     if gamestate is None:
+#         return 0.0
+    
+#     if gamestate.menu_state not in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
+#         return 0.0
+    
+#     p1 = gamestate.players[1]
+#     p2 = gamestate.players[2]
+    
+#     dx = float(p1.position.x) - float(p2.position.x)
+#     dy = float(p1.position.y) - float(p2.position.y)
+#     dist = (dx ** 2 + dy ** 2) ** 0.5 / 100
+
+#     stocks = float(p1.stock)
+
+#     return dist + stocks
+    
+# hate the void reward
 def compute_reward(gamestate):
     if gamestate is None:
         return 0.0
     
+    if gamestate.menu_state not in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
+        return 0.0
+    
     p1 = gamestate.players[1]
     p2 = gamestate.players[2]
-
+    
     dx = float(p1.position.x) - float(p2.position.x)
     dy = float(p1.position.y) - float(p2.position.y)
-    dist = (dx ** 2 + dy ** 2) ** 0.5
-    reward = (1.0 / (dist + 1.0))*10
-    #print(reward)
-    return reward
+    dist = (dx ** 2 + dy ** 2) ** 0.5 / 100
+    
+    if p1.off_stage:
+        return -100
+
+    return dist
+
+# social distancing reward
+
+
 
 
 def menu_helper(gamestate, controller1, controller2):
@@ -232,20 +297,20 @@ def menu_helper(gamestate, controller1, controller2):
         gamestate,
         controller1,
         melee.Character.FOX,
-        melee.Stage.FINAL_DESTINATION,
+        melee.Stage.BATTLEFIELD,
         connect_code='',
         cpu_level=0,
         costume=0,
-        autostart=True,
+        autostart=False,
         swag=False
     )
     melee.MenuHelper.menu_helper_simple(
         gamestate,
         controller2,
         melee.Character.FALCO,
-        melee.Stage.FINAL_DESTINATION,
+        melee.Stage.BATTLEFIELD,
         connect_code='',
-        cpu_level=0,
+        cpu_level=1,
         costume=0,
         autostart=True,
         swag=False
