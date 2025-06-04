@@ -17,6 +17,7 @@ from util import make_obs, make_obs_simple
 # from QNet import QNet
 # from PolicyNet import PolicyNet
 # from Agents.BCAgent import BCAgent
+from QNet import QNet
 from Agents.PPOAgent import PPOAgentSimple
 
 from torch.distributions import Bernoulli, Normal
@@ -79,13 +80,46 @@ from torch.distributions import Bernoulli, Normal
 #     for i, b in enumerate(btns):
 #         if action_tensor[i].item() >0.5:
 #             controller.press_button(b)
+# def unpack_and_send(controller, action_tensor):
+#     """
+#     action_tensor: FloatTensor of shape [2] for main stick [x, y]
+#     """
+#     controller.release_all()
+#     main_x, main_y = action_tensor[0].item(), action_tensor[1].item()
+#     controller.tilt_analog(melee.enums.Button.BUTTON_MAIN, main_x, main_y)
+ACTIONS = torch.tensor([
+    [0,0,0],
+    [0,1,0],
+    [-1,0,0],
+    [1,0,0],
+    [0,0,1]
+], dtype=torch.float32)
+
+# def unpack_and_send(controller, action_tensor):
+#     """
+#     action_tensor: FloatTensor of shape [2] for main stick [x, y]
+#     """
+#     controller.release_all()
+#     main_x, main_y = action_tensor[0].item(), action_tensor[1].item()
+#     controller.tilt_analog(melee.enums.Button.BUTTON_MAIN, main_x, main_y)
+
 def unpack_and_send(controller, action_tensor):
     """
-    action_tensor: FloatTensor of shape [2] for main stick [x, y]
+    action_tensor: FloatTensor of shape [act_dim] in the same order you trained on:
+      [A, B, D_DOWN, D_LEFT, D_RIGHT, D_UP,
+       L, R, X, Y, Z, 
+       main_x, main_y, c_x, c_y, l_shldr, r_shldr]
     """
+    # First, clear last frame’s inputs
     controller.release_all()
-    main_x, main_y = action_tensor[0].item(), action_tensor[1].item()
-    controller.tilt_analog(melee.enums.Button.BUTTON_MAIN, main_x, main_y)
+
+    # Booleans
+    if action_tensor[1].item() >0.5:
+        controller.press_button(melee.enums.Button.BUTTON_Y)
+    if action_tensor[2].item() >0.5:
+        controller.press_button(melee.enums.Button.BUTTON_L)
+
+    controller.tilt_analog_unit(melee.enums.Button.BUTTON_MAIN, action_tensor[0].item(), 0)
 
 
 #Load the trained model
@@ -106,8 +140,11 @@ def unpack_and_send(controller, action_tensor):
 #         return action  # Integer action index
 
 #agent = PPOAgent(obs_dim=70, n_buttons=11, n_analogs=6)
-agent = PPOAgentSimple(obs_dim=5)
-state_dict = torch.load("final_model_PPO_simple_stay_alive\FINAL_PPO_simple_stay_alive_50.pth", map_location="cpu")
+#agent = PPOAgentSimple(obs_dim=5)
+agent = QNet(obs_dim=6, n_actions=len(ACTIONS))
+
+state_dict = torch.load("final_model_DQN_max_dist/trained_double_qnet_simple_108.pth", map_location="cpu")
+#state_dict = torch.load("final_model_PPO_simple_min_dist\FINAL_PPO_simple_min_dist_50.pth", map_location="cpu")
 agent.load_state_dict(state_dict)
 agent.eval()
 
@@ -124,20 +161,27 @@ agent.eval()
 #         action = torch.cat([btns, analogs])
 #         return action
     
+# def policy(obs):
+#     with torch.no_grad():
+#         out = agent(obs.unsqueeze(0))
+#         logits_x = out['logits_x'].squeeze(0)  # [3]
+#         logits_y = out['logits_y'].squeeze(0)  # [3]
+#         dist_x = Categorical(logits=logits_x)
+#         dist_y = Categorical(logits=logits_y)
+#         idx_x = dist_x.sample()  # 0, 1, or 2
+#         #action_counts[idx_x] += 1
+#         #print("Action counts:", action_counts)
+#         idx_y = dist_y.sample()
+#         # Map indices to values
+#         choices = torch.tensor([-1.0, 0.0, 1.0])  # choices for joystick
+#         action = torch.stack([choices[idx_x], choices[idx_y]])
+#         return action
+
 def policy(obs):
     with torch.no_grad():
-        out = agent(obs.unsqueeze(0))
-        logits_x = out['logits_x'].squeeze(0)  # [3]
-        logits_y = out['logits_y'].squeeze(0)  # [3]
-        dist_x = Categorical(logits=logits_x)
-        dist_y = Categorical(logits=logits_y)
-        idx_x = dist_x.sample()  # 0, 1, or 2
-        #action_counts[idx_x] += 1
-        #print("Action counts:", action_counts)
-        idx_y = dist_y.sample()
-        # Map indices to values
-        choices = torch.tensor([-1.0, 0.0, 1.0])  # choices for joystick
-        action = torch.stack([choices[idx_x], choices[idx_y]])
+        q_values = agent(obs.unsqueeze(0))  # [1, N_ACTIONS]
+        action_idx = q_values.argmax(dim=1).item()
+        action = ACTIONS[action_idx]  # ACTIONS should be defined as in your training script
         return action
 
 
@@ -245,7 +289,7 @@ for _ in range(0,150):
         melee.Character.FALCO,
         melee.Stage.BATTLEFIELD,
         connect_code='',
-        cpu_level=0,
+        cpu_level=5,
         costume=costume,
         autostart=True,    # <-- start when both have been selected
         swag=False
@@ -266,6 +310,27 @@ while True:
     # if gamestate is None:
     #     continue
         continue;
-    
+    melee.MenuHelper.menu_helper_simple(
+        gamestate,
+        controller1,
+        melee.Character.FOX,
+        melee.Stage.BATTLEFIELD,
+        connect_code='',
+        cpu_level=0,
+        costume=costume,
+        autostart=False,
+        swag=False
+    )
+    melee.MenuHelper.menu_helper_simple(
+        gamestate,
+        controller2,
+        melee.Character.FALCO,
+        melee.Stage.BATTLEFIELD,
+        connect_code='',
+        cpu_level=5,
+        costume=costume,
+        autostart=True,    # <-- start when both have been selected
+        swag=False
+    )
     melee.MenuHelper.skip_postgame(controller1,gamestate)
     melee.MenuHelper.skip_postgame(controller2,gamestate)

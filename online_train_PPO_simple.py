@@ -30,7 +30,7 @@ ENT_COEF_START = 1
 ENT_COEF_END = 0.01
 MAX_GRAD_NORM = 0.5
 
-obs_dim = 4
+obs_dim = 6
 n_actions = 2
 
 
@@ -115,21 +115,20 @@ def ppo_update(agent, buf, opt_act, opt_crit, update_count):
             dist_x    = Categorical(logits=logits_x)
             dist_y    = Categorical(logits=logits_y)
             #print(dist_x)
-            #dist_a = Bernoulli(logits=a_logit)
-
             logp_m = dist_x.log_prob(ix_m) + dist_y.log_prob(iy_m)# + dist_a.log_prob(a_b[mb])
-
             ratio     = torch.exp(logp_m - old_lp_m)
 
-            # s1        = ratio * adv_m
-            # s2        = torch.clamp(ratio,1-CLIP_EPS,1+CLIP_EPS)*adv_m
-            # loss_a    = -torch.min(s1, s2).mean()
+            s1        = ratio * adv_m
+            s2        = torch.clamp(ratio,1-CLIP_EPS,1+CLIP_EPS)*adv_m
+            loss_a    = -torch.min(s1, s2).mean()
 
-            loss_a    = -(ratio*adv_m).mean()
+            # loss_a    = -(ratio*adv_m).mean()
 
             #entropy bonus
             progress = min(1.0, update_count / TOTAL_UPDATES)
-            ENT_COEF = ENT_COEF_START + (ENT_COEF_END - ENT_COEF_START) * progress
+            decay_frac = max(0.0, 1.0 - update_count / float(TOTAL_UPDATES))
+            ENT_COEF = ENT_COEF_END + (ENT_COEF_START - ENT_COEF_END) * decay_frac
+
 
             ent = dist_x.entropy().mean() + dist_y.entropy().mean()
             loss_a -= ENT_COEF * ent
@@ -208,14 +207,15 @@ def unpack_and_send(controller, action_tensor):
 #     return reward
 
 # STAY ALIVE REWARD
-def compute_reward(gamestate):
+def compute_reward(prev_gamestate,gamestate):
     if gamestate is None:
         return 0.0
     
-    p1 = gamestate.players[1]
-    reward = 0.0
+    reward = +0.01
 
-    reward = float(p1.stock) * 0.01  # Reward for staying alive
+    # 2) if Fox died between prev_gs and gs, give a big penalty
+    if gamestate.players[1].stock < prev_gamestate.players[1].stock:
+        reward = -1.0  # harsh death signal
     return reward
 
 # DO DMG REWARD
@@ -525,8 +525,8 @@ def main():
             done = False
             count +=1
             state = make_obs(gamestate)
-            #reward = compute_reward(prev_gamestate,gamestate)
-            reward = compute_reward(gamestate)
+            reward = compute_reward(prev_gamestate,gamestate)
+            #reward = compute_reward(gamestate)
             buffer.store(prev_state, prev_action, prev_logp, reward, prev_value)
             rollout_steps += 1
 
@@ -566,7 +566,7 @@ def main():
             if(done == False and count>0):
                 #print("Game ended, pushing last state")
                 if(buffer.ptr>0):
-                    buffer.finish_path(last_val=0.0)
+                    buffer.finish_path(last_val=-10.0)
                     rollout_steps += 1
                     #update_count += 1
                     #actor_loss, critic_loss = ppo_update(agent, buffer, opt_actor, opt_critic)

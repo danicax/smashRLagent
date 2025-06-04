@@ -76,3 +76,43 @@ class ReplayBufferPPO:
         for b in (self.obs, self.actions, self.logps,
                     self.rews, self.vals, self.advs, self.returns):
             b.zero_()
+
+class ReplayBufferTransformer:
+    def __init__(self, capacity=100_000):
+        self.capacity = capacity
+        self.buf = []  # will store tuples (state_seq, action, reward, next_state_seq, done)
+        self.position = 0
+
+    def push(self, state_seq, action, reward, next_state_seq, done):
+        """state_seq: Tensor[SEQ_LEN, obs_dim], next_state_seq: same shape."""
+        if len(self.buf) < self.capacity:
+            self.buf.append(None)
+        self.buf[self.position] = (state_seq.clone(),
+                                   action,
+                                   reward,
+                                   next_state_seq.clone(),
+                                   done)
+        self.position = (self.position + 1) % self.capacity
+
+    def sample(self, batch_size):
+        """
+        Returns:
+          state_seqs: Tensor [B, SEQ_LEN, obs_dim]
+          actions:    LongTensor [B]
+          rewards:    FloatTensor [B]
+          next_seqs:  Tensor [B, SEQ_LEN, obs_dim]
+          dones:      FloatTensor [B] (0 or 1)
+        """
+        batch = random.sample(self.buf, batch_size)
+        state_seqs, actions, rewards, next_seqs, dones = zip(*batch)
+
+        # Stack along new batch dimension:
+        state_seqs = torch.stack(state_seqs, dim=0)    # [B, SEQ_LEN, obs_dim]
+        next_seqs  = torch.stack(next_seqs,  dim=0)    # [B, SEQ_LEN, obs_dim]
+        actions    = torch.tensor(actions, dtype=torch.long)   # [B]
+        rewards    = torch.tensor(rewards, dtype=torch.float32) # [B]
+        dones      = torch.tensor(dones,   dtype=torch.float32) # [B]
+        return state_seqs, actions, rewards, next_seqs, dones
+
+    def __len__(self):
+        return len(self.buf)
