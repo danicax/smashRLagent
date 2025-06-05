@@ -7,3 +7,11 @@ run.sh
 tonys_data/
 log.txt
 /*.pth
+*.csv
+graph.ipynb
+read_eval.ipynb
+*_log.txt
+models/
+checkpoints/
+logs/
+visuals/
