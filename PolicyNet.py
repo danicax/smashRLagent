@@ -8,11 +8,10 @@ class PolicyNet(nn.Module):
         self.obs_dim = obs_dim
         self.act_dim = act_dim
         self.net = nn.Sequential(
-            nn.Linear(obs_dim, 256), nn.BatchNorm1d(256), nn.ReLU(),
-            nn.Linear(256,      256), nn.BatchNorm1d(256), nn.ReLU(),
-            nn.Linear(256,      256), nn.BatchNorm1d(256), nn.ReLU(),
+            nn.Linear(obs_dim, 128), nn.BatchNorm1d(128), nn.ReLU(),
+            nn.Linear(128,      128), nn.BatchNorm1d(128), nn.ReLU(),
         )
-        self.mu     = nn.Linear(256, act_dim)         # mean for each of 17 dims
+        self.mu     = nn.Linear(128, act_dim)         # mean for each of 17 dims
         # self.logstd = nn.Parameter(torch.zeros((obs_dim, act_dim)))  # log-std for each
         self.logstd = nn.Parameter(torch.zeros(act_dim))  # log-std for each
 

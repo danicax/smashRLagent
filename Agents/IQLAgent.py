@@ -38,26 +38,34 @@ class IQLAgent(Agent):
         self.param_update_freq = param_update_freq
         self.num_param_updates = 0
 
-    def reward_function(self, states, actions, next_states):
-        def get_feats(state):
-            p1_stock = state[:, 0]
-            p1_percent = state[:, 1]
-            p2_stock = state[:, 17]
-            p2_percent = state[:, 18]
-            return p1_stock, p1_percent, p2_stock, p2_percent
+    # def reward_function(self, states, actions, next_states):
+    #     def get_feats(state):
+    #         p1_stock = state[:, 0]
+    #         p1_percent = state[:, 1]
+    #         p2_stock = state[:, 17]
+    #         p2_percent = state[:, 18]
+    #         return p1_stock, p1_percent, p2_stock, p2_percent
         
-        a,b,c,d = get_feats(states)
-        e,f,g,h = get_feats(next_states)
+    #     a,b,c,d = get_feats(states)
+    #     e,f,g,h = get_feats(next_states)
 
-        stock_value = 500
+    #     stock_value = 500
 
-        p1_stock_and_percent = a * stock_value + b
-        p2_stock_and_percent = c * stock_value + d
-        p1_stock_and_percent_next = e * stock_value + f
-        p2_stock_and_percent_next = g * stock_value + h
-        return p1_stock_and_percent_next - p1_stock_and_percent - p2_stock_and_percent_next + p2_stock_and_percent
+    #     p1_stock_and_percent = a * stock_value + b
+    #     p2_stock_and_percent = c * stock_value + d
+    #     p1_stock_and_percent_next = e * stock_value + f
+    #     p2_stock_and_percent_next = g * stock_value + h
+    #     return p1_stock_and_percent_next - p1_stock_and_percent - p2_stock_and_percent_next + p2_stock_and_percent
 
 
+    def reward_function(self, states, actions, next_states):
+        p1_x = next_states[:, 2]
+        p1_y = next_states[:, 3]
+        p2_x = next_states[:, 19]
+        p2_y = next_states[:, 20]
+        dist = torch.sqrt((p1_x - p2_x)**2 + (p1_y - p2_y)**2)
+        return 1 / (dist + 1)
+        
 
     # def reward_function(self, states, actions, next_states):
     #     def get_feats(state):

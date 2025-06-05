@@ -107,10 +107,10 @@ def unpack_and_send(controller, action_tensor):
 #         return action  # Integer action index
 
 #agent = PPOAgent(obs_dim=70, n_buttons=11, n_analogs=6)
-agent = PPOAgentSimple(obs_dim=70)
-state_dict = torch.load("trained_PPO_pain_17.pth", map_location="cpu")
-agent.load_state_dict(state_dict)
-agent.eval()
+# agent = PPOAgentSimple(obs_dim=70)
+# state_dict = torch.load("trained_PPO_pain_17.pth", map_location="cpu")
+# agent.load_state_dict(state_dict)
+# agent.eval()
 
 # def policy(obs):
 #     with torch.no_grad():
@@ -125,16 +125,16 @@ agent.eval()
 #         action = torch.cat([btns, analogs])
 #         return action
     
-def policy(obs):
-    with torch.no_grad():
-        out = agent(obs.unsqueeze(0))  # Add batch dimension
-        mu = out['mu'].squeeze(0)      # [2]
-        # For deterministic: use mu; for stochastic: sample from Normal
-        # std = out['logstd'].exp()
-        # dist = Normal(mu, std)
-        # action = dist.sample()
-        action = mu  # deterministic
-        return action
+# def policy(obs):
+#     with torch.no_grad():
+#         out = agent(obs.unsqueeze(0))  # Add batch dimension
+#         mu = out['mu'].squeeze(0)      # [2]
+#         # For deterministic: use mu; for stochastic: sample from Normal
+#         # std = out['logstd'].exp()
+#         # dist = Normal(mu, std)
+#         # action = dist.sample()
+#         action = mu  # deterministic
+#         return action
 
 
 
@@ -143,7 +143,7 @@ def policy(obs):
 agent = BCAgent(obs_dim=70, act_dim=17)
 # agent = BCAgent(obs_dim=72, act_dim=17)
 # model = PolicyNet(obs_dim=70, act_dim=17)
-state_dict = torch.load("fox_5.pth", map_location="cpu")
+state_dict = torch.load("iql_40.pth", map_location="cpu")
 agent.policy_net.load_state_dict(state_dict)
 agent.policy_net.eval()
 # agent = BCAgent(obs_dim=70, act_dim=17)
