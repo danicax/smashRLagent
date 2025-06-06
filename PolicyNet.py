@@ -20,7 +20,7 @@ class PolicyNet(nn.Module):
         mu     = self.mu(h)               # [B,17]
         mu     = torch.sigmoid(mu)       # use sigmoid to ensure the output is between 0 and 1
         
-        logstd = torch.sigmoid(self.logstd) * 6 - 5
+        logstd = torch.clamp(self.logstd, min=-20, max=0)
         # logstd = torch.sigmoid(x @ self.logstd) * 6 - 5
         # logstd = torch.sigmoid(self.logstd(x)) * 6 - 5
         # logstd = torch.clamp(logstd, min=-5, max=1)

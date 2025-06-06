@@ -12,8 +12,8 @@ class BCAgent(Agent):
     def __init__(self, obs_dim, act_dim, device="cpu"):
         super(BCAgent, self).__init__()
         self.policy_net = PolicyNet(obs_dim, act_dim).to(device)
-        self.optimizer = optim.Adam(self.policy_net.parameters(), lr=0.005)
-        self.scheduler = ReduceLROnPlateau(self.optimizer, 'min', patience=350, factor=0.5)
+        self.optimizer = optim.Adam(self.policy_net.parameters(), lr=0.0005, weight_decay=0.001)
+        # self.scheduler = ReduceLROnPlateau(self.optimizer, 'min', patience=350, factor=0.5)
 
     def train(self, states, actions, next_states):
         self.policy_net.train()
@@ -30,7 +30,7 @@ class BCAgent(Agent):
         # Add gradient clipping with max norm of 1.0
         torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), max_norm=1.0)
         self.optimizer.step()
-        self.scheduler.step(loss)
+        # self.scheduler.step(loss)
         return loss.item()
 
     def predict(self, state):

@@ -42,14 +42,14 @@ def process_slp(slp, output_path):
 # source_path = "replays"
 source_path = "data"
 # find all slp files in the data folder recursively
-slp_paths = glob.glob(os.path.join(source_path, "fox_falco_dl/*.slp"), recursive=True)
+slp_paths = glob.glob(os.path.join(source_path, "slippilab/*.slp"), recursive=True)
 print(len(slp_paths))
 
 num_train = 5
-num_val = 0
+num_val = 1
 
-train_output_path = f"data/train_mini_{num_train}_fox_falco_dl"
-val_output_path = f"data/val_mini_{num_val}_fox_falco_dl"
+train_output_path = f"data/train_mini_{num_train}"
+val_output_path = f"data/val_mini_{num_val}"
 
 def make_train(x): return process_slp(x, train_output_path)
 def make_val(x): return process_slp(x, val_output_path)

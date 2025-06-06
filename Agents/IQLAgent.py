@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Normal
 import torch
+from util import min_dist_reward, stay_alive_reward
 
 
 
@@ -28,9 +29,9 @@ class IQLAgent(Agent):
         ).to(device)
         self.policy = PolicyNet(obs_dim, act_dim).to(device)
 
-        self.policy_optimizer = optim.Adam(self.policy.parameters(), lr=0.0001)
-        self.Qoptimizer = optim.Adam(self.Qnet.parameters(), lr=0.0001)
-        self.Voptimizer = optim.Adam(self.Vnet.parameters(), lr=0.0001)
+        self.policy_optimizer = optim.Adam(self.policy.parameters(), lr=0.0005, weight_decay=0.001)
+        self.Qoptimizer = optim.Adam(self.Qnet.parameters(), lr=0.0005, weight_decay=0.001)
+        self.Voptimizer = optim.Adam(self.Vnet.parameters(), lr=0.0005, weight_decay=0.001)
 
         self.gamma = gamma
         self.iql_expectile = iql_expectile
@@ -38,45 +39,44 @@ class IQLAgent(Agent):
         self.param_update_freq = param_update_freq
         self.num_param_updates = 0
 
+    # min dist reward
     # def reward_function(self, states, actions, next_states):
-    #     def get_feats(state):
-    #         p1_stock = state[:, 0]
-    #         p1_percent = state[:, 1]
-    #         p2_stock = state[:, 17]
-    #         p2_percent = state[:, 18]
-    #         return p1_stock, p1_percent, p2_stock, p2_percent
+    #     p1_x = states[:, 2]
+    #     p1_y = states[:, 3]
+    #     p2_x = states[:, 19]
+    #     p2_y = states[:, 20]
+    #     dist = torch.sqrt((p1_x - p2_x)**2 + (p1_y - p2_y)**2)
+    #     return 1 / (dist + 1)
+
+
+
+    # def compute_reward(prev_gamestate, gamestate):
+    #     if gamestate is None:
+    #         return 0.0
         
-    #     a,b,c,d = get_feats(states)
-    #     e,f,g,h = get_feats(next_states)
-
-    #     stock_value = 500
-
-    #     p1_stock_and_percent = a * stock_value + b
-    #     p2_stock_and_percent = c * stock_value + d
-    #     p1_stock_and_percent_next = e * stock_value + f
-    #     p2_stock_and_percent_next = g * stock_value + h
-    #     return p1_stock_and_percent_next - p1_stock_and_percent - p2_stock_and_percent_next + p2_stock_and_percent
-
-
-    def reward_function(self, states, actions, next_states):
-        p1_x = next_states[:, 2]
-        p1_y = next_states[:, 3]
-        p2_x = next_states[:, 19]
-        p2_y = next_states[:, 20]
-        dist = torch.sqrt((p1_x - p2_x)**2 + (p1_y - p2_y)**2)
-        return 1 / (dist + 1)
+    #     if gamestate.menu_state not in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
+    #         return 0.0
         
+    #     p1 = gamestate.players[1]
+        
+    #     if p1.off_stage:
+    #         return -100
+        
+    #     if gamestate.players[1].percent > prev_gamestate.players[1].percent:
+    #         return -(gamestate.players[1].percent - prev_gamestate.players[1].percent)
 
+    #     return 0
+
+    # # stock + health percentage reward
     # def reward_function(self, states, actions, next_states):
-    #     def get_feats(state):
-    #         p1_x = state[:, 2]
-    #         p2_x = state[:, 19]
-    #         return p1_x, p2_x
+    #     p1_stock = states[:, 0]
+    #     p1_percent = states[:, 1]
+    #     p2_stock = states[:, 17]
+    #     p2_percent = states[:, 18]
 
-    #     a,b = get_feats(states)
-    #     c,d = get_feats(next_states)
-    #     return torch.abs(a - b) - torch.abs(c - d)
+    #     reward = (p1_stock - p2_stock) * 3 + (p2_percent - p1_percent) * 0.01
 
+    #     return reward
 
 
     def expectile_loss(self, diff):
@@ -125,6 +125,7 @@ class IQLAgent(Agent):
 
         self.policy_optimizer.zero_grad()
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.policy.parameters(), 1.0)
         self.policy_optimizer.step()
 
         return loss.item()
@@ -157,6 +158,7 @@ class IQLAgent(Agent):
         dist = self.policy(state.unsqueeze(0))
         action = dist.sample().squeeze(0)
         action[:11] = action[:11] > 0.5
-        action[-2] = action[-2] if action[-2] > 0.2 else 0
-        action[-1] = action[-1] if action[-1] > 0.2 else 0
+        action[-2] = action[-2] if action[-2] > 0.5 else 0
+        action[-1] = action[-1] if action[-1] > 0.5 else 0
         return action.cpu().numpy()
+

@@ -15,3 +15,7 @@ models/
 checkpoints/
 logs/
 visuals/
+models/
+logs/
+checkpoints/
+checkpoint_final/

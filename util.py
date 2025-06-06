@@ -100,8 +100,8 @@ def make_obs_simple(gamestate):
     # 1) Player features extractor (17 floats each)
     def player_feats(p):
         return [
-            float(p.stock),
-            float(p.percent),
+            # float(p.stock),
+            # float(p.percent),
             p.position.x,
             p.position.y,
             # float(p.character.value),
@@ -158,3 +158,31 @@ def get_controller_state(controller_state):
         ], dtype=torch.float32)
     return act
 
+
+
+# MIN DIST REWARD
+def min_dist_reward(gamestate):
+    if gamestate is None:
+        return 0.0
+    
+    p1 = gamestate.players[1]
+    p2 = gamestate.players[2]
+
+    dx = float(p1.position.x) - float(p2.position.x)
+    dy = float(p1.position.y) - float(p2.position.y)
+    dist = (dx ** 2 + dy ** 2) ** 0.5
+    reward = 1.0 / (dist + 1.0)
+    return reward
+    #print(reward)
+
+# STAY ALIVE REWARD
+def stay_alive_reward(gamestate):
+    if gamestate is None:
+        return 0.0
+    
+    p1 = gamestate.players[1]
+    reward = 0.0
+
+    if p1.position.y>-0.01:
+        reward+= 0.1
+    return reward
