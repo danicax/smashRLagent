@@ -3,7 +3,8 @@ import torch
 from torch.distributions import Normal
 import melee
 import argparse
-from util import connect_to_console, make_obs_simple, unpack_and_send_simple, compute_reward, menu_helper
+from util import connect_to_console, unpack_and_send_simple, compute_reward, menu_helper, unpack_and_send
+from util import make_obs, make_obs_simple
 import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 import time
@@ -30,7 +31,7 @@ class PPOPolicyNet(nn.Module):
         return dist
 
 class PPOAgentFull():
-    def __init__(self, obs_dim, act_dim=17, hidden_dim=256, max_steps_per_episode=3000, console_arguments=None, gamma=0.98, updates_per_episode=5, device='cpu'):
+    def __init__(self, obs_dim, act_dim=17, hidden_dim=256, max_steps_per_episode=3000, console_arguments=None, gamma=0.98, updates_per_episode=5, device='cpu', experiment_name=""):
         self.max_steps_per_episode = max_steps_per_episode
         self.args = console_arguments
         self.obs_dim = obs_dim
@@ -39,6 +40,7 @@ class PPOAgentFull():
         self.updates_per_episode = updates_per_episode
         self.clip_eps = 0.2
         self.device = device
+        self.experiment_name = experiment_name
 
         self.actor = PPOPolicyNet(obs_dim, hidden_dim=hidden_dim, act_dim=act_dim).to(device)
         self.critic = torch.nn.Sequential(
@@ -48,14 +50,14 @@ class PPOAgentFull():
             torch.nn.ReLU(),
             torch.nn.Linear(hidden_dim, 1)
         ).to(device)
-        self.writer = SummaryWriter(log_dir=f'./logs/PPO_Hate_The_Void_Small_Net_0.998')
+        self.writer = SummaryWriter(log_dir=f'./logs/{experiment_name}')
 
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=3e-4, weight_decay=1e-5)
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=5e-4, weight_decay=1e-5)
 
 
-    def train(self, total_episodes):
-        episode_num = 0
+    def train(self, total_episodes, restart_at=0):
+        episode_num = restart_at
         while episode_num < total_episodes:
             episode_num += 1
 
@@ -97,7 +99,7 @@ class PPOAgentFull():
             # save the model
             if episode_num % 5 == 0:
                 torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict(), 'actor_optimizer': self.actor_optimizer.state_dict(), 'critic_optimizer': self.critic_optimizer.state_dict()}, 
-                f'./models/PPO_Hate_The_Void_Small_Net_0.998_{episode_num}.pth')
+                f'./models/{self.experiment_name}_{episode_num}.pth')
 
     def evaluate(self, obs, act):
         v = self.critic(obs)
@@ -138,7 +140,11 @@ class PPOAgentFull():
         reward_list = [[]]
         frames_list = []
 
+        gamestate = None
+        prev_gamestate = None
+
         while True:
+            prev_gamestate = gamestate
             gamestate = console.step()
             if gamestate is None:
                 continue
@@ -146,9 +152,9 @@ class PPOAgentFull():
             # If we're past menus, nothing to do—CPUs play themselves
             if gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
 
-                obs = make_obs_simple(gamestate)
+                obs = make_obs(gamestate)
                 act, log_prob = self.get_action(obs.to(self.device))
-                reward = compute_reward(gamestate)
+                reward = compute_reward(prev_gamestate, gamestate)
 
                 obs_list.append(obs)
                 action_list.append(act)
@@ -171,7 +177,8 @@ class PPOAgentFull():
                     break
 
                 # send the action to the controller and continue
-                unpack_and_send_simple(controller1,act)
+                # unpack_and_send_simple(controller1,act)
+                unpack_and_send(controller1,act)
 
                 frames_in_game += 1
                 continue
@@ -265,6 +272,7 @@ class PPOAgentFull():
 if __name__ == '__main__':
     dolphin_path = "/home/summertony717/School/cs224r/project/Slippi/squashfs-root/usr/bin"
     iso_path = "/home/summertony717/School/cs224r/project/melee.iso"
+    experiment_name = "PPO_XL_everything_continuous_stay_alive_0.99"
 
     # create an argparse for the console arguments
     parser = argparse.ArgumentParser(description='Run two CPUs vs each other using libmelee')
@@ -284,6 +292,7 @@ if __name__ == '__main__':
                         help='Path to Melee ISO')
     args = parser.parse_args()
 
-    agent = PPOAgentFull(obs_dim=4, act_dim=2, hidden_dim=32, max_steps_per_episode=1800, console_arguments=args, gamma=0.998, updates_per_episode=10, device='cpu')
-    # agent.load_checkpoint(checkpoint_path='./models/PPO_Social_Distance_60.pth')
-    agent.train(total_episodes=400)                         
+    agent = PPOAgentFull(obs_dim=70, act_dim=17, hidden_dim=128, max_steps_per_episode=1800, console_arguments=args, gamma=0.99, updates_per_episode=10, device='cpu', experiment_name=experiment_name)
+    restart_at = 0
+    # agent.load_checkpoint(checkpoint_path=f'./models/{experiment_name}_{restart_at}.pth')
+    agent.train(total_episodes=200, restart_at=restart_at)                         

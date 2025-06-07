@@ -229,22 +229,55 @@ def unpack_and_send_simple(controller, action_tensor):
     controller.tilt_analog(melee.enums.Button.BUTTON_MAIN, main_x, 0.5)
 
 
+def unpack_and_send(controller, action_tensor):
+    """
+    action_tensor: FloatTensor of shape [act_dim] in the same order you trained on:
+      [A, B, D_DOWN, D_LEFT, D_RIGHT, D_UP,
+       L, R, X, Y, Z, START,
+       main_x, main_y, c_x, c_y, raw_x, raw_y, l_shldr, r_shldr]
+    """
+    # First, clear last frame’s inputs
+    #controller.release_all()
+
+    # Booleans
+    # print("ACTION",action_tensor)
+    btns = [
+        melee.enums.Button.BUTTON_A, melee.enums.Button.BUTTON_B, melee.enums.Button.BUTTON_D_DOWN,
+        melee.enums.Button.BUTTON_D_LEFT, melee.enums.Button.BUTTON_D_RIGHT,melee.enums. Button.BUTTON_D_UP,
+        melee.enums.Button.BUTTON_L, melee.enums.Button.BUTTON_R, melee.enums.Button.BUTTON_X,
+        melee.enums.Button.BUTTON_Y, melee.enums.Button.BUTTON_Z #, melee.enums.Button.BUTTON_START
+    ]
+
+    #Analog sticks
+    main_x, main_y = action_tensor[11].item(), action_tensor[12].item()
+    c_x,    c_y    = action_tensor[13].item(), action_tensor[14].item()
+    l_shoulder,    r_shoulder    = action_tensor[15].item(), action_tensor[16].item()
+
+    controller.tilt_analog(melee.enums.Button.BUTTON_MAIN, main_x, main_y)
+    controller.tilt_analog(melee.enums.Button.BUTTON_C,    c_x,    c_y)
+    controller.press_shoulder(melee.enums.Button.BUTTON_L, l_shoulder)
+    controller.press_shoulder(melee.enums.Button.BUTTON_R, r_shoulder)
+    
+    for i, b in enumerate(btns):
+        if action_tensor[i].item() >0.5:
+            controller.press_button(b)
+
+
 # MIN DIST REWARD
-# def compute_reward(gamestate):
-#     if gamestate is None:
+# def compute_reward(prev_gamestate, gamestate):
+#     # Compute the reward based on the game state
+#     # For now, just return a dummy reward
+#     if prev_gamestate is None or gamestate is None:
 #         return 0.0
-    
-#     if gamestate.menu_state not in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
-#         return 0.0
-    
+
 #     p1 = gamestate.players[1]
 #     p2 = gamestate.players[2]
 
 #     dx = float(p1.position.x) - float(p2.position.x)
 #     dy = float(p1.position.y) - float(p2.position.y)
 #     dist = (dx ** 2 + dy ** 2) ** 0.5
-#     reward = (1.0 / (dist + 1.0))*10
-#     #print(reward)
+#     reward = 1.0 / (dist + 1.0)
+
 #     return reward
 
 # social distancing reward
@@ -267,26 +300,42 @@ def unpack_and_send_simple(controller, action_tensor):
 #     return dist + stocks
     
 # hate the void reward
-def compute_reward(gamestate):
-    if gamestate is None:
+# def compute_reward(gamestate):
+#     if gamestate is None:
+#         return 0.0
+    
+#     if gamestate.menu_state not in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
+#         return 0.0
+    
+#     p1 = gamestate.players[1]
+#     p2 = gamestate.players[2]
+    
+#     dx = float(p1.position.x) - float(p2.position.x)
+#     dy = float(p1.position.y) - float(p2.position.y)
+#     dist = (dx ** 2 + dy ** 2) ** 0.5 / 100
+    
+#     if p1.off_stage:
+#         return -100
+
+#     return dist
+
+# stay alive reward
+def compute_reward(prev_gamestate, gamestate):
+    if gamestate is None or prev_gamestate is None:
         return 0.0
     
-    if gamestate.menu_state not in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
+    if gamestate.menu_state not in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH] or prev_gamestate.menu_state not in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
         return 0.0
     
     p1 = gamestate.players[1]
-    p2 = gamestate.players[2]
-    
-    dx = float(p1.position.x) - float(p2.position.x)
-    dy = float(p1.position.y) - float(p2.position.y)
-    dist = (dx ** 2 + dy ** 2) ** 0.5 / 100
     
     if p1.off_stage:
         return -100
+    
+    if gamestate.players[1].percent > prev_gamestate.players[1].percent:
+        return -(gamestate.players[1].percent - prev_gamestate.players[1].percent)
 
-    return dist
-
-# social distancing reward
+    return 0
 
 
 
@@ -310,7 +359,7 @@ def menu_helper(gamestate, controller1, controller2):
         melee.Character.FALCO,
         melee.Stage.BATTLEFIELD,
         connect_code='',
-        cpu_level=1,
+        cpu_level=9,
         costume=0,
         autostart=True,
         swag=False
