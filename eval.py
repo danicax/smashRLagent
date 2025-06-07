@@ -80,20 +80,20 @@ from torch.distributions import Bernoulli, Normal
 #     for i, b in enumerate(btns):
 #         if action_tensor[i].item() >0.5:
 #             controller.press_button(b)
-# def unpack_and_send(controller, action_tensor):
-#     """
-#     action_tensor: FloatTensor of shape [2] for main stick [x, y]
-#     """
-#     controller.release_all()
-#     main_x, main_y = action_tensor[0].item(), action_tensor[1].item()
-#     controller.tilt_analog(melee.enums.Button.BUTTON_MAIN, main_x, main_y)
-ACTIONS = torch.tensor([
-    [0,0,0],
-    [0,1,0],
-    [-1,0,0],
-    [1,0,0],
-    [0,0,1]
-], dtype=torch.float32)
+def unpack_and_send(controller, action_tensor):
+    """
+    action_tensor: FloatTensor of shape [2] for main stick [x, y]
+    """
+    controller.release_all()
+    main_x, main_y = action_tensor[0].item(), action_tensor[1].item()
+    controller.tilt_analog(melee.enums.Button.BUTTON_MAIN, main_x, main_y)
+# ACTIONS = torch.tensor([
+#     [0,0,0],
+#     [0,1,0],
+#     [-1,0,0],
+#     [1,0,0],
+#     [0,0,1]
+# ], dtype=torch.float32)
 
 # def unpack_and_send(controller, action_tensor):
 #     """
@@ -161,28 +161,28 @@ agent.eval()
 #         action = torch.cat([btns, analogs])
 #         return action
     
-# def policy(obs):
-#     with torch.no_grad():
-#         out = agent(obs.unsqueeze(0))
-#         logits_x = out['logits_x'].squeeze(0)  # [3]
-#         logits_y = out['logits_y'].squeeze(0)  # [3]
-#         dist_x = Categorical(logits=logits_x)
-#         dist_y = Categorical(logits=logits_y)
-#         idx_x = dist_x.sample()  # 0, 1, or 2
-#         #action_counts[idx_x] += 1
-#         #print("Action counts:", action_counts)
-#         idx_y = dist_y.sample()
-#         # Map indices to values
-#         choices = torch.tensor([-1.0, 0.0, 1.0])  # choices for joystick
-#         action = torch.stack([choices[idx_x], choices[idx_y]])
-#         return action
-
 def policy(obs):
     with torch.no_grad():
-        q_values = agent(obs.unsqueeze(0))  # [1, N_ACTIONS]
-        action_idx = q_values.argmax(dim=1).item()
-        action = ACTIONS[action_idx]  # ACTIONS should be defined as in your training script
+        out = agent(obs.unsqueeze(0))
+        logits_x = out['logits_x'].squeeze(0)  # [3]
+        logits_y = out['logits_y'].squeeze(0)  # [3]
+        dist_x = Categorical(logits=logits_x)
+        dist_y = Categorical(logits=logits_y)
+        idx_x = dist_x.sample()  # 0, 1, or 2
+        #action_counts[idx_x] += 1
+        #print("Action counts:", action_counts)
+        idx_y = dist_y.sample()
+        # Map indices to values
+        choices = torch.tensor([-1.0, 0.0, 1.0])  # choices for joystick
+        action = torch.stack([choices[idx_x], choices[idx_y]])
         return action
+
+# def policy(obs):
+#     with torch.no_grad():
+#         q_values = agent(obs.unsqueeze(0))  # [1, N_ACTIONS]
+#         action_idx = q_values.argmax(dim=1).item()
+#         action = ACTIONS[action_idx]  # ACTIONS should be defined as in your training script
+#         return action
 
 
 # agent = BCAgent(obs_dim=70, act_dim=17)
@@ -327,7 +327,7 @@ while True:
         melee.Character.FALCO,
         melee.Stage.BATTLEFIELD,
         connect_code='',
-        cpu_level=5,
+        cpu_level=0,
         costume=costume,
         autostart=True,    # <-- start when both have been selected
         swag=False

@@ -12,35 +12,47 @@ from torch.nn.functional import mse_loss
 from torch.distributions import Categorical
 import argparse
 import signal
-from util import make_obs_simple as make_obs
+from util import make_obs as make_obs
 from QNet import QNet
 from ReplayBuffer import ReplayBuffer
 import math
 
 from torch.distributions import Bernoulli, Normal
 
-save_dir = "final_model_DQN_stay_alive_simple"
+save_dir = "Double_DQN_Hard_XL_Everything"
 os.makedirs(save_dir, exist_ok=True)
 
 move_inputs = [
-    [0,0,0],
-    [0,1,0],
-    [-1,0,0],
-    [1,0,0],
-    [0,0,1]
+    [0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [1,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,1,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,1,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,1,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,1,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,1,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,1,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,1,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,1,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,1,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,-1,0,0],
+    [0,0,0,0,0,0,0,0,0,0,1,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,-1,0],
+    [0,0,0,0,0,0,0,0,0,0,0,1,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,-1],
+    [0,0,0,0,0,0,0,0,0,0,0,0,1]
 ]
 #ACTIONS = torch.tensor(list(move_inputs.values()), dtype=torch.float32)
 ACTIONS = torch.tensor((move_inputs), dtype=torch.float32)
 
 N_ACTIONS = len(move_inputs)
-obs_dim = 6
+obs_dim = 70
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 q_net    = QNet(obs_dim=obs_dim, n_actions=N_ACTIONS).to(device)
 target_q = QNet(obs_dim=obs_dim, n_actions=N_ACTIONS).to(device)
 target_q.load_state_dict(q_net.state_dict())
-opt      = optim.Adam(q_net.parameters(), lr=1e-4)
+opt      = optim.Adam(q_net.parameters(), lr=1e-6)
 buffer   = ReplayBuffer()
 eps_start, eps_end, eps_decay = 1.0, 0.1, 1_000
 gamma = 0.995
@@ -55,6 +67,24 @@ def compute_epsilon(step, eps_start=1.0, eps_end=0.1, eps_decay=1_000):
     """
     return eps_end + (eps_start - eps_end) * math.exp(-1. * step / eps_decay)
 
+# def unpack_and_send(controller, action_tensor):
+#     """
+#     action_tensor: FloatTensor of shape [act_dim] in the same order you trained on:
+#       [A, B, D_DOWN, D_LEFT, D_RIGHT, D_UP,
+#        L, R, X, Y, Z, 
+#        main_x, main_y, c_x, c_y, l_shldr, r_shldr]
+#     """
+#     # First, clear last frame’s inputs
+#     controller.release_all()
+
+#     # Booleans
+#     if action_tensor[1].item() >0.5:
+#         controller.press_button(melee.enums.Button.BUTTON_Y)
+#     if action_tensor[2].item() >0.5:
+#         controller.press_button(melee.enums.Button.BUTTON_L)
+
+#     controller.tilt_analog_unit(melee.enums.Button.BUTTON_MAIN, action_tensor[0].item(), 0)
+
 def unpack_and_send(controller, action_tensor):
     """
     action_tensor: FloatTensor of shape [act_dim] in the same order you trained on:
@@ -66,12 +96,26 @@ def unpack_and_send(controller, action_tensor):
     controller.release_all()
 
     # Booleans
-    if action_tensor[1].item() >0.5:
-        controller.press_button(melee.enums.Button.BUTTON_Y)
-    if action_tensor[2].item() >0.5:
-        controller.press_button(melee.enums.Button.BUTTON_L)
+    #print("ACTION",action_tensor)
+    
+    btns = [
+        melee.enums.Button.BUTTON_A, melee.enums.Button.BUTTON_B, melee.enums.Button.BUTTON_D_DOWN,
+        melee.enums.Button.BUTTON_D_LEFT, melee.enums.Button.BUTTON_D_RIGHT,melee.enums.Button.BUTTON_D_UP,
+        melee.enums.Button.BUTTON_L, melee.enums.Button.BUTTON_R, melee.enums.Button.BUTTON_X,
+        melee.enums.Button.BUTTON_Z #, melee.enums.Button.BUTTON_START
+    ]
+    
+    for i, b in enumerate(btns):
+        if action_tensor[i].item() >0.5:
+            controller.press_button(b)
 
-    controller.tilt_analog_unit(melee.enums.Button.BUTTON_MAIN, action_tensor[0].item(), 0)
+    #Analog sticks
+    main_x = action_tensor[10].item()
+    c_x,    c_y    = action_tensor[11].item(), action_tensor[12].item()
+    #l_shoulder,    r_shoulder    = action_tensor[13].item(), action_tensor[14].item()
+
+    controller.tilt_analog_unit(melee.enums.Button.BUTTON_MAIN, main_x, 0)
+    controller.tilt_analog_unit(melee.enums.Button.BUTTON_C,    c_x,    c_y)
 
 
 def check_port(value):
@@ -169,7 +213,7 @@ for _ in range(0,150):
         melee.Character.FALCO,
         melee.Stage.BATTLEFIELD,
         connect_code='',
-        cpu_level=5,
+        cpu_level=9,
         costume=costume,
         autostart=True,    # <-- start when both have been selected
         swag=False
@@ -179,40 +223,55 @@ prev_gamestate = None
 prev_state = None
 action_idx = random.randrange(N_ACTIONS)
 
-# def compute_reward(prev_gamestate, gamestate):
-#     # Compute the reward based on the game state
-#     # For now, just return a dummy reward
-#     if prev_gamestate is None or gamestate is None:
-#         return 0.0
-
-#     p1 = gamestate.players[1]
-#     p2 = gamestate.players[2]
-
-#     dx = float(p1.position.x) - float(p2.position.x)
-#     dy = float(p1.position.y) - float(p2.position.y)
-#     dist = (dx ** 2 + dy ** 2) ** 0.5
-#     reward = 1.0 / (dist + 1.0)
-    
-#     # if reward<0:
-#     #     print("Reward: ", reward, "Player Stock: ", player_stock, "Enemy Stock: ", enemy_stock, "Player HP: ", player_hp, "Enemy HP: ", enemy_hp)
-#     return reward
-
 def compute_reward(prev_gamestate, gamestate):
-    if gamestate is None:
+    if gamestate is None or prev_gamestate is None:
         return 0.0
-    
-    if gamestate.menu_state not in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
-        return 0.0
-    
-    p1 = gamestate.players[1]
-    
-    if p1.off_stage:
-        return -100
-    
-    if gamestate.players[1].percent > prev_gamestate.players[1].percent:
-        return -(gamestate.players[1].percent - prev_gamestate.players[1].percent)
+    # Example: reward based on stock difference
+    player_stock = 0
+    enemy_stock = 0
 
-    return 0
+    if gamestate.players[1].stock < prev_gamestate.players[1].stock:
+        
+        player_stock = (int(gamestate.players[1].stock) - int(prev_gamestate.players[1].stock))*3
+        #print("DEATH", player_stock)
+    if gamestate.players[2].stock < prev_gamestate.players[2].stock:
+        enemy_stock = -(int(gamestate.players[2].stock) - int(prev_gamestate.players[2].stock))*3
+
+    player_hp = 0
+    enemy_hp = 0
+
+    if gamestate.players[1].off_stage:
+        return -100
+
+    if(player_stock == 0):
+        if gamestate.players[1].percent > prev_gamestate.players[1].percent:
+            player_hp = -(float(gamestate.players[1].percent) - float(prev_gamestate.players[1].percent)) * 0.001
+    if(enemy_stock == 0):
+        if gamestate.players[2].percent > prev_gamestate.players[2].percent:
+            enemy_hp = (float(gamestate.players[2].percent) - float(prev_gamestate.players[2].percent)) * 0.001
+
+
+    reward = player_stock + enemy_stock + player_hp + enemy_hp
+    
+    # if reward != 0:
+    #     print("REWARD",reward)
+    return reward
+# def compute_reward(prev_gamestate, gamestate):
+#     if gamestate is None:
+#         return 0.0
+    
+#     if gamestate.menu_state not in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
+#         return 0.0
+    
+#     p1 = gamestate.players[1]
+    
+#     if p1.off_stage:
+#         return -100
+    
+#     if gamestate.players[1].percent > prev_gamestate.players[1].percent:
+#         return -(gamestate.players[1].percent - prev_gamestate.players[1].percent)
+
+#     return 0
 
 count = 0
 num_games = 0

@@ -55,6 +55,25 @@ class PPOAgentSimple(nn.Module):
             'value': self.value_head(h).squeeze(-1)
         }
 
+class PPOAgentDiscrete(nn.Module):
+    def __init__(self, obs_dim, n_actions):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(obs_dim, 128),
+            nn.ReLU(),
+            nn.Linear(128, 128),
+            nn.ReLU(),
+        )
+        self.policy_head = nn.Linear(128, n_actions)
+        self.value_head = nn.Linear(128, 1)
+
+    def forward(self, x):
+        h = self.net(x)
+        return {
+            'logits': self.policy_head(h),  # [B, N_ACTIONS]
+            'value': self.value_head(h).squeeze(-1)
+        }
+
 # class PPOAgentSimple(nn.Module):
 #     def __init__(self, obs_dim):
 #         super().__init__()

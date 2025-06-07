@@ -34,7 +34,7 @@ move_inputs = [
 ]
 #ACTIONS = torch.tensor(list(move_inputs.values()), dtype=torch.float32)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+print(device)
 ACTIONS = torch.tensor((move_inputs), dtype=torch.float32)
 N_ACTIONS = len(move_inputs)
 
@@ -89,6 +89,7 @@ def check_port(value):
         )
     return ivalue
 
+
 parser = argparse.ArgumentParser(description='Run two CPUs vs each other using libmelee')
 parser.add_argument('--port1', '-p1', type=check_port,
                     help='Controller port for CPU 1', default=1)
@@ -113,11 +114,11 @@ console = melee.Console(path=args.dolphin_executable_path,
 
 # Two virtual controllers
 controller1 = melee.Controller(console=console,
-                               port=args.port1,
-                               type=melee.ControllerType.STANDARD)
+                            port=args.port1,
+                            type=melee.ControllerType.STANDARD)
 controller2 = melee.Controller(console=console,
-                               port=args.port2,
-                               type=melee.ControllerType.STANDARD)
+                            port=args.port2,
+                            type=melee.ControllerType.STANDARD)
 
 def signal_handler(sig, frame):
     console.stop()
@@ -238,29 +239,29 @@ num_games = 0
 num_train = 5000
 done = False
 total_reward = 0
+print("HI",device)
 while True:
-    
     
     if gamestate is None:
         continue
     prev_gamestate = gamestate
     
     if prev_gamestate is not None and prev_gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
-
+        
         unpack_and_send(controller1, ACTIONS[action_idx])
+
         if prev_state is None:
             tmp = make_obs(prev_gamestate)
             state_seq.append(tmp)
             prev_state = get_padded_seq(state_seq)
         else:
             prev_state = state
-
-
+        #print("sending action: ", action_idx)
+        
     gamestate = console.step()
 
     if gamestate is not None and gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
         
-        done = False
         count +=1
         if prev_gamestate is None or prev_state is None:
             continue
@@ -268,21 +269,14 @@ while True:
         state_seq.append(tmp)
         state = get_padded_seq(state_seq)
         reward = compute_reward(prev_gamestate, gamestate)
-        #reward = compute_reward(gamestate)
         total_reward += reward
         
-        
-        # # if len(buffer) == 0 or buffer.buf[-1][4]==False:
-        # #     if done:
-        # #         print("PUSHING DONE")
         buffer.push(prev_state, action_idx, reward, state, done)
 
         # # update Q
         if len(buffer) >= batch_size:
-           
+        
             states, actions, rewards, next_states, dones = buffer.sample(batch_size)
-            states =states.to(device)   # → [B, SEQ_LEN, obs_dim]
-            next_states  = next_states.to(device)   # → [B, SEQ_LEN, obs_dim]
             # Compute the target Q-values
             with torch.no_grad():
             #     target_q_values = target_q(next_states).max(1)[0]
@@ -290,6 +284,8 @@ while True:
             #with double DQN
                 #WTF LINE
                 best_next_a = q_net(next_states).argmax(dim=1, keepdim=True)      # → [B, 1]
+                #print("Best next action: ", best_next_a)
+
                 # next_q_target = target_q(next_states).gather(1, best_next_a).squeeze(1)  # → [B]
                 # target_q_values = rewards + (1 - dones) * gamma * next_q_target
 
@@ -330,7 +326,7 @@ while True:
             if(len(buffer) > 0 and buffer.buf[-1][4]==False):
                 print("Game ended, pushing last state")
                 buffer.buf[-1] = (buffer.buf[-1][0], buffer.buf[-1][1], buffer.buf[-1][2], buffer.buf[-1][3], True)
-        done = True
+    done = True
         #print("NONE")
 
         # done = True
@@ -341,6 +337,6 @@ while True:
         continue
     # prev_state = None
     state_seq = deque([torch.zeros(obs_dim, device=device) for _ in range(SEQ_LEN)], maxlen=SEQ_LEN)
-    
+    #print("ENDED?")
     melee.MenuHelper.skip_postgame(controller1,gamestate)
     melee.MenuHelper.skip_postgame(controller2,gamestate)

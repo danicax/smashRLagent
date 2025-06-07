@@ -10,17 +10,17 @@ from torch.distributions import Bernoulli, Normal, Categorical
 import torch.nn.functional as F
 
 #from Agents.PPOAgent import PPOAgent
-from Agents.PPOAgent import PPOAgentSimple
-from ReplayBuffer import ReplayBufferPPO
+from Agents.PPOAgent import PPOAgentDiscrete
+from ReplayBuffer import ReplayBufferPPODiscrete as ReplayBufferPPO
 
 import melee
-from util import make_obs_simple as make_obs 
+from util import make_obs as make_obs 
 
-GAMMA       = 0.99
+GAMMA       = 0.995
 LAMBDA      = 0.95
 CLIP_EPS    = 0.2
-LR_ACTOR    = 1e-6
-LR_CRITIC   = 1e-5
+LR_ACTOR    = 1e-7
+LR_CRITIC   = 1e-7
 ROLLOUT_LEN = 1024
 UPDATE_EPOCHS = 4
 MINI_BATCH  = 64
@@ -30,10 +30,29 @@ ENT_COEF_START = 1
 ENT_COEF_END = 0.01
 MAX_GRAD_NORM = 0.5
 
-obs_dim = 6
-n_actions = 2
+obs_dim = 70
 
-
+move_inputs = [
+    [0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [1,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,1,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,1,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,1,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,1,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,1,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,1,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,1,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,1,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,1,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,-1,0,0],
+    [0,0,0,0,0,0,0,0,0,0,1,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,-1,0],
+    [0,0,0,0,0,0,0,0,0,0,0,1,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,-1],
+    [0,0,0,0,0,0,0,0,0,0,0,0,1]
+]
+ACTIONS = torch.tensor(move_inputs, dtype=torch.float32)
+N_ACTIONS = len(move_inputs)
 
 # --- 3) PPO update function ---
 # def ppo_update(agent, buf, opt_act, opt_crit):
@@ -87,10 +106,7 @@ def ppo_update(agent, buf, opt_act, opt_crit, update_count):
     adv_b = (adv_b - adv_b.mean()) / (adv_b.std(unbiased=False) + 1e-8)
 
     # 2) precompute indices
-    choices = torch.tensor([-1.,0.,1.], device=obs_b.device)
-    idx_x   = (act_b[:,0:1].unsqueeze(-1) - choices).abs().argmin(-1).squeeze(1)
-    idx_y   = (act_b[:,1:2].unsqueeze(-1) - choices).abs().argmin(-1).squeeze(1)
-    #a_b     = act_b[:,2]  # A button actions (0 or 1)
+    action_idx = act_b.long()  # [N]
 
     total_a, total_c, steps = 0.0, 0.0, 0
 
@@ -103,34 +119,25 @@ def ppo_update(agent, buf, opt_act, opt_crit, update_count):
             old_lp_m  = old_logp_b[mb]
             ret_m     = ret_b[mb]
             adv_m     = adv_b[mb]
-            ix_m      = idx_x[mb]
-            iy_m      = idx_y[mb]
+            action_idx_m = action_idx[mb]
 
             out       = agent(obs_m)
-            logits_x  = out['logits_x']
-            logits_y  = out['logits_y']
-            #a_logit  = out['a_logit']
+            logits    = out['logits']
             vals      = out['value'].squeeze(-1)
 
-            dist_x    = Categorical(logits=logits_x)
-            dist_y    = Categorical(logits=logits_y)
-            #print(dist_x)
-            logp_m = dist_x.log_prob(ix_m) + dist_y.log_prob(iy_m)# + dist_a.log_prob(a_b[mb])
+            dist      = Categorical(logits=logits)
+            logp_m    = dist.log_prob(action_idx_m)
             ratio     = torch.exp(logp_m - old_lp_m)
 
             s1        = ratio * adv_m
             s2        = torch.clamp(ratio,1-CLIP_EPS,1+CLIP_EPS)*adv_m
             loss_a    = -torch.min(s1, s2).mean()
 
-            # loss_a    = -(ratio*adv_m).mean()
-
-            #entropy bonus
-            progress = min(1.0, update_count / TOTAL_UPDATES)
+            # entropy bonus
             decay_frac = max(0.0, 1.0 - update_count / float(TOTAL_UPDATES))
             ENT_COEF = ENT_COEF_END + (ENT_COEF_START - ENT_COEF_END) * decay_frac
 
-
-            ent = dist_x.entropy().mean() + dist_y.entropy().mean()
+            ent = dist.entropy().mean()
             loss_a -= ENT_COEF * ent
 
             # critic
@@ -140,7 +147,6 @@ def ppo_update(agent, buf, opt_act, opt_crit, update_count):
             opt_act.zero_grad()
             opt_crit.zero_grad()
             (loss_a + loss_c).backward()
-            #torch.nn.utils.clip_grad_norm_(agent.parameters(), MAX_GRAD_NORM)
             opt_act.step()
             opt_crit.step()
 
@@ -153,23 +159,6 @@ def ppo_update(agent, buf, opt_act, opt_crit, update_count):
 num_left = 0
 num_right = 0
 num_down = 0
-def unpack_and_send_c2(controller):
-    global num_down, num_left, num_right
-    controller.release_all()
-    if num_down < 3:
-        controller.tilt_analog_unit(melee.enums.Button.BUTTON_MAIN, 0, -1)
-        num_down += 1
-    else:
-        if num_left < 3:
-            controller.tilt_analog_unit(melee.enums.Button.BUTTON_MAIN, -1, 0)
-            num_left += 1
-        elif num_right < 3:
-            controller.tilt_analog_unit(melee.enums.Button.BUTTON_MAIN, 1, 0)
-            num_right += 1
-        else:
-            num_left = 0
-            num_right = 0
-
 def unpack_and_send(controller, action_tensor):
     """
     action_tensor: FloatTensor of shape [act_dim] in the same order you trained on:
@@ -181,14 +170,27 @@ def unpack_and_send(controller, action_tensor):
     controller.release_all()
 
     # Booleans
+    #print("ACTION",action_tensor)
     
-    main_x, main_y = action_tensor[0].item(), action_tensor[1].item()
-    #a_button = action_tensor[2].item()
-    #print("ACTION",action_tensor, main_x, main_y)
-    controller.tilt_analog_unit(melee.enums.Button.BUTTON_MAIN, main_x, main_y)
+    btns = [
+        melee.enums.Button.BUTTON_A, melee.enums.Button.BUTTON_B, melee.enums.Button.BUTTON_D_DOWN,
+        melee.enums.Button.BUTTON_D_LEFT, melee.enums.Button.BUTTON_D_RIGHT,melee.enums.Button.BUTTON_D_UP,
+        melee.enums.Button.BUTTON_L, melee.enums.Button.BUTTON_R, melee.enums.Button.BUTTON_X,
+        melee.enums.Button.BUTTON_Z #, melee.enums.Button.BUTTON_START
+    ]
+    
+    for i, b in enumerate(btns):
+        if action_tensor[i].item() >0.5:
+            controller.press_button(b)
 
-    # if a_button >= 0.5:
-    #     controller.press_button(melee.enums.Button.BUTTON_A)
+    #Analog sticks
+    main_x = action_tensor[10].item()
+    c_x,    c_y    = action_tensor[11].item(), action_tensor[12].item()
+    #l_shoulder,    r_shoulder    = action_tensor[13].item(), action_tensor[14].item()
+
+    controller.tilt_analog_unit(melee.enums.Button.BUTTON_MAIN, main_x, 0)
+    controller.tilt_analog_unit(melee.enums.Button.BUTTON_C,    c_x,    c_y)
+
 
 
 # MIN DIST REWARD
@@ -207,16 +209,16 @@ def unpack_and_send(controller, action_tensor):
 #     return reward
 
 # STAY ALIVE REWARD
-def compute_reward(prev_gamestate,gamestate):
-    if gamestate is None:
-        return 0.0
+# def compute_reward(prev_gamestate,gamestate):
+#     if gamestate is None:
+#         return 0.0
     
-    reward = +0.01
+#     reward = +0.01
 
-    # 2) if Fox died between prev_gs and gs, give a big penalty
-    if gamestate.players[1].stock < prev_gamestate.players[1].stock:
-        reward = -1.0  # harsh death signal
-    return reward
+#     # 2) if Fox died between prev_gs and gs, give a big penalty
+#     if gamestate.players[1].stock < prev_gamestate.players[1].stock:
+#         reward = -1.0  # harsh death signal
+#     return reward
 
 # DO DMG REWARD
 # def compute_reward(prev_gamestate, gamestate):
@@ -285,6 +287,39 @@ def compute_reward(prev_gamestate,gamestate):
 #     # if reward != 0:
 #     #     print("REWARD",reward)
 #     return reward
+def compute_reward(prev_gamestate, gamestate):
+    if gamestate is None or prev_gamestate is None:
+        return 0.0
+    # Example: reward based on stock difference
+    player_stock = 0
+    enemy_stock = 0
+
+    if gamestate.players[1].stock < prev_gamestate.players[1].stock:
+        
+        player_stock = (int(gamestate.players[1].stock) - int(prev_gamestate.players[1].stock))*3
+        #print("DEATH", player_stock)
+    if gamestate.players[2].stock < prev_gamestate.players[2].stock:
+        enemy_stock = -(int(gamestate.players[2].stock) - int(prev_gamestate.players[2].stock))*3
+
+    player_hp = 0
+    enemy_hp = 0
+
+    if gamestate.players[1].off_stage:
+        return -100
+
+    if(player_stock == 0):
+        if gamestate.players[1].percent > prev_gamestate.players[1].percent:
+            player_hp = -(float(gamestate.players[1].percent) - float(prev_gamestate.players[1].percent)) * 0.001
+    if(enemy_stock == 0):
+        if gamestate.players[2].percent > prev_gamestate.players[2].percent:
+            enemy_hp = (float(gamestate.players[2].percent) - float(prev_gamestate.players[2].percent)) * 0.001
+
+
+    reward = player_stock + enemy_stock + player_hp + enemy_hp
+    
+    # if reward != 0:
+    #     print("REWARD",reward)
+    return reward
 
 def check_port(value):
     ivalue = int(value)
@@ -297,7 +332,7 @@ def check_port(value):
 def main():
     global num_down, num_left, num_right
 
-    buffer   = ReplayBufferPPO(ROLLOUT_LEN, obs_dim, n_actions)
+    buffer   = ReplayBufferPPO(ROLLOUT_LEN, obs_dim)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     parser = argparse.ArgumentParser(description='Run two CPUs vs each other using libmelee')
@@ -387,13 +422,13 @@ def main():
             melee.Character.FALCO,
             melee.Stage.BATTLEFIELD,
             connect_code='',
-            cpu_level=0,
+            cpu_level=9,
             costume=costume,
             autostart=True,    # <-- start when both have been selected
             swag=False
         )
 
-    agent = PPOAgentSimple(obs_dim).to(device)
+    agent = PPOAgentDiscrete(obs_dim, N_ACTIONS).to(device)
 
 
     # opt_actor  = actor = optim.Adam(
@@ -403,18 +438,10 @@ def main():
     #   + [agent.analog_logstd],        # it’s a Parameter, so needs to go in manually
     #   lr=LR_ACTOR
     # )
-    opt_actor = optim.Adam(
-        list(agent.shared.parameters())
-    + list(agent.joystick_logits.parameters()),
-    lr=LR_ACTOR
-    )
+    opt_actor = optim.Adam(list(agent.policy_head.parameters()), lr=LR_ACTOR)
+    opt_critic = optim.Adam(list(agent.value_head.parameters()), lr=LR_CRITIC)
 
-    opt_critic = optim.Adam(
-        list(agent.value_head.parameters()),
-        lr=LR_CRITIC
-    )
-
-    save_dir = "final_model_PPO_stay_alive"
+    save_dir = "PPO_hard_XL_everything"
     os.makedirs(save_dir, exist_ok=True)
 
 
@@ -428,6 +455,7 @@ def main():
     prev_gamestate = None
     prev_state = None
     prev_action = None
+    prev_action_idx = None
     prev_logp = None
     prev_value = None
     action_counts = [0, 0, 0]
@@ -443,36 +471,30 @@ def main():
             controller1.release_all()
             state = make_obs(gamestate)
             with torch.no_grad():
-                out = agent(state.unsqueeze(0))
-                logits_x = out['logits_x'].squeeze(0)  # [3]
-                logits_y = out['logits_y'].squeeze(0)  # [3]
-                dist_x = Categorical(logits=logits_x)
-                dist_y = Categorical(logits=logits_y)
+                # out = agent(state.unsqueeze(0))
+                # logits_x = out['logits_x'].squeeze(0)  # [3]
+                # logits_y = out['logits_y'].squeeze(0)  # [3]
+                # dist_x = Categorical(logits=logits_x)
+                # dist_y = Categorical(logits=logits_y)
 
-                idx_x = dist_x.sample()
-                #action_counts[idx_x] += 1
-                #print("Action counts:", action_counts)
-                idx_y = dist_y.sample()
-                #action_counts[idx_y] += 1
-                # if random.random() < epsilon:
-                #     # Random action
-                #     idx_x = torch.randint(0, 3, (1,)).squeeze()
-                #     idx_y = torch.randint(0, 3, (1,)).squeeze()
-                #     print("hi",idx_x, idx_y)
-                # else:
-                #     idx_x = dist_x.sample()  # 0, 1, or 2
-                #     #action_counts[idx_x] += 1
-                #     #print("Action counts:", action_counts)
-                #     idx_y = dist_y.sample()
-                # Map indices to values
-                #print("IDX",idx_x, idx_y)
-                choices = torch.tensor([-1.0, 0.0, 1.0], device=device)  # choices for joystick
-                action = torch.stack([choices[idx_x], choices[idx_y]])
-                logp = dist_x.log_prob(idx_x) + dist_y.log_prob(idx_y)
+                # idx_x = dist_x.sample()
+                # idx_y = dist_y.sample()
+                # choices = torch.tensor([-1.0, 0.0, 1.0], device=device)  # choices for joystick
+                # action = torch.stack([choices[idx_x], choices[idx_y]])
+                # logp = dist_x.log_prob(idx_x) + dist_y.log_prob(idx_y)
+                # value = out['value'].item()
+
+                out = agent(state.unsqueeze(0))
+                logits = out['logits'].squeeze(0)  # [N_ACTIONS]
+                dist = Categorical(logits=logits)
+                action_idx = dist.sample()
+                action = ACTIONS[action_idx]  # This is your move_input row
+                logp = dist.log_prob(action_idx)
                 value = out['value'].item()
 
                 prev_state = state
                 prev_action = action
+                prev_action_idx = action_idx
                 prev_logp = logp
                 prev_value = value
                 prev_gamestate = gamestate
@@ -527,7 +549,7 @@ def main():
             state = make_obs(gamestate)
             reward = compute_reward(prev_gamestate,gamestate)
             #reward = compute_reward(gamestate)
-            buffer.store(prev_state, prev_action, prev_logp, reward, prev_value)
+            buffer.store(prev_state, prev_action_idx, prev_logp, reward, prev_value)
             rollout_steps += 1
 
             if rollout_steps >= ROLLOUT_LEN:
@@ -555,8 +577,7 @@ def main():
                 buffer.reset()   
                 torch.save(agent.state_dict(), os.path.join(save_dir, f"FINAL_PPO_simple_stay_alive_{update_count}.pth"))
 
-                if( update_count >= TOTAL_UPDATES):
-                    return;
+                
             continue
             
         if gamestate is None:

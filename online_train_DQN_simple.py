@@ -19,28 +19,27 @@ import math
 
 from torch.distributions import Bernoulli, Normal
 
-save_dir = "final_model_DQN_max_dist"
+save_dir = "Double_DQN_Min_Dist_Simple_Simple"
 os.makedirs(save_dir, exist_ok=True)
 
 move_inputs = [
-    [0,0,0],
-    [0,1,0],
-    [-1,0,0],
-    [1,0,0],
-    [0,0,1]
+    [0,0],
+    [0,1],
+    [-1,0],
+    [1,0]
 ]
 #ACTIONS = torch.tensor(list(move_inputs.values()), dtype=torch.float32)
 ACTIONS = torch.tensor((move_inputs), dtype=torch.float32)
 
 N_ACTIONS = len(move_inputs)
-obs_dim = 6
+obs_dim = 4
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 q_net    = QNet(obs_dim=obs_dim, n_actions=N_ACTIONS).to(device)
 target_q = QNet(obs_dim=obs_dim, n_actions=N_ACTIONS).to(device)
 target_q.load_state_dict(q_net.state_dict())
-opt      = optim.Adam(q_net.parameters(), lr=1e-4)
+opt      = optim.Adam(q_net.parameters(), lr=1e-6)
 buffer   = ReplayBuffer()
 eps_start, eps_end, eps_decay = 1.0, 0.1, 1_000
 gamma = 0.99
@@ -68,8 +67,8 @@ def unpack_and_send(controller, action_tensor):
     # Booleans
     if action_tensor[1].item() >0.5:
         controller.press_button(melee.enums.Button.BUTTON_Y)
-    if action_tensor[2].item() >0.5:
-        controller.press_button(melee.enums.Button.BUTTON_L)
+    # if action_tensor[2].item() >0.5:
+    #     controller.press_button(melee.enums.Button.BUTTON_L)
 
     controller.tilt_analog_unit(melee.enums.Button.BUTTON_MAIN, action_tensor[0].item(), 0)
 
@@ -169,7 +168,7 @@ for _ in range(0,150):
         melee.Character.FALCO,
         melee.Stage.BATTLEFIELD,
         connect_code='',
-        cpu_level=9,
+        cpu_level=0,
         costume=costume,
         autostart=True,    # <-- start when both have been selected
         swag=False
@@ -179,38 +178,40 @@ prev_gamestate = None
 prev_state = None
 action_idx = random.randrange(N_ACTIONS)
 
-# def compute_reward(prev_gamestate, gamestate):
-#     # Compute the reward based on the game state
-#     # For now, just return a dummy reward
-#     if prev_gamestate is None or gamestate is None:
-#         return 0.0
-
-#     p1 = gamestate.players[1]
-#     p2 = gamestate.players[2]
-
-#     dx = float(p1.position.x) - float(p2.position.x)
-#     dy = float(p1.position.y) - float(p2.position.y)
-#     dist = (dx ** 2 + dy ** 2) ** 0.5
-#     reward = 1.0 / (dist + 1.0)
-    
-#     # if reward<0:
-#     #     print("Reward: ", reward, "Player Stock: ", player_stock, "Enemy Stock: ", enemy_stock, "Player HP: ", player_hp, "Enemy HP: ", enemy_hp)
-#     return reward
-
 def compute_reward(gamestate):
-    if gamestate is None:
+    # Compute the reward based on the game state
+    # For now, just return a dummy reward
+    if prev_gamestate is None or gamestate is None:
         return 0.0
-    
-    if gamestate.menu_state not in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
-        return -4.0
-    
-    p1 = gamestate.players[1]
-    
-    percent = float(p1.percent)
-    stock = float(p1.stock)
-    reward = stock*100-percent
 
-    return reward*0.001
+    p1 = gamestate.players[1]
+    p2 = gamestate.players[2]
+
+    dx = float(p1.position.x) - float(p2.position.x)
+    dy = float(p1.position.y) - float(p2.position.y)
+    dist = (dx ** 2 + dy ** 2) ** 0.5
+    reward = 1.0 / (dist + 1.0)
+    
+    if p1.off_stage:
+        return -100
+    # if reward<0:
+    #     print("Reward: ", reward, "Player Stock: ", player_stock, "Enemy Stock: ", enemy_stock, "Player HP: ", player_hp, "Enemy HP: ", enemy_hp)
+    return reward
+
+# def compute_reward(gamestate):
+#     if gamestate is None:
+#         return 0.0
+    
+#     if gamestate.menu_state not in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
+#         return -4.0
+    
+#     p1 = gamestate.players[1]
+    
+#     percent = float(p1.percent)
+#     stock = float(p1.stock)
+#     reward = stock*100-percent
+
+#     return reward*0.001
 
 count = 0
 num_games = 0
@@ -255,8 +256,8 @@ while True:
 
             # Compute the target Q-values
             with torch.no_grad():
-            #     target_q_values = target_q(next_states).max(1)[0]
-            #     target_q_values = rewards + gamma * target_q_values
+                #target_q_values = target_q(next_states).max(1)[0]
+                #target_q_values = rewards + gamma * target_q_values
             #with double DQN
                 best_next_a    = q_net(next_states).argmax(dim=1, keepdim=True)  # [B,1]
 

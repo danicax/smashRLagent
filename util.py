@@ -106,7 +106,7 @@ def make_obs_simple(gamestate):
             p.position.y,
             # float(p.character.value),
             # float(p.action.value),
-            float(p.action_frame),
+            #float(p.action_frame),
             # float(p.facing),
             # float(p.shield_strength),
             # float(p.jumps_left),
@@ -121,8 +121,8 @@ def make_obs_simple(gamestate):
 
     # get player slots 1 & 2
     ps = gamestate.players
-    f1 = player_feats(ps.get(1)) if 1 in ps else [0.0]*3
-    f2 = player_feats(ps.get(2)) if 2 in ps else [0.0]*3 #we dont want player2 data right?
+    f1 = player_feats(ps.get(1)) if 1 in ps else [0.0]*2
+    f2 = player_feats(ps.get(2)) if 2 in ps else [0.0]*2 #we dont want player2 data right?
     #f2 = [float(gamestate.players.get(2).character.value)]
 
     # 2) Stage as one float

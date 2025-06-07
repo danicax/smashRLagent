@@ -2,7 +2,7 @@ import torch.nn as nn
 import torch
 
 class TransformerQNet(nn.Module):
-    def __init__(self, obs_dim, n_actions, seq_len, d_model=128, nhead=4, num_layers=2):
+    def __init__(self, obs_dim, n_actions, seq_len, d_model=64, nhead=4, num_layers=2):
         super().__init__()
         # e.g. a simple TransformerEncoder that takes tokens of size obs_dim
         self.input_proj = nn.Linear(obs_dim, d_model)
@@ -20,21 +20,7 @@ class TransformerQNet(nn.Module):
         x_seq: Tensor of shape [B, SEQ_LEN, obs_dim]
         returns: Tensor [B, n_actions] (Q-values for the current time step)
         """
-        # 1) project each obs into d_model
-        #    shape → [B, SEQ_LEN, d_model]
-        z = self.input_proj(x_seq)
-
-        # 2) Transformer expects [SEQ_LEN, B, d_model], so transpose:
-        #    → [SEQ_LEN, B, d_model]
-        z = z.transpose(0, 1)
-
-        # 3) pass through TransformerEncoder
-        #    out shape: [SEQ_LEN, B, d_model]
-        z_enc = self.transformer(z)
-
-        # 4) we only care about the last time step (index SEQ_LEN–1)
-        #    so slice out z_enc[-1] → [B, d_model]
-        last_hidden = z_enc[-1]
-
-        # 5) project to Q-values: [B, n_actions]
+        z = self.input_proj(x_seq)  # [B, SEQ_LEN, d_model]
+        z_enc = self.transformer(z) # [B, SEQ_LEN, d_model]
+        last_hidden = z_enc[:, -1]  # [B, d_model]
         return self.head(last_hidden)
