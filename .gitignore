@@ -14,5 +14,15 @@ visuals/
 *_log.txt
 read_eval.ipynb
 graph.ipynb
+*.csv
+graph.ipynb
+read_eval.ipynb
+*_log.txt
+models/
+checkpoints/
+logs/
+visuals/
+models/
+logs/
 checkpoints/
 checkpoint_final/

@@ -38,7 +38,10 @@ class PPOAgentSimple(nn.Module):
         self.shared = nn.Sequential(
             nn.Linear(obs_dim, hid), nn.ReLU(),
             nn.Linear(hid, hid),     nn.ReLU(),
+<<<<<<< HEAD
             nn.Linear(hid, hid),     nn.ReLU()
+=======
+>>>>>>> gaussian-only
         )
         # 3 logits for x, 3 logits for y
         self.joystick_logits = nn.Linear(hid, 6)

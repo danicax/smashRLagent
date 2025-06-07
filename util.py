@@ -28,7 +28,7 @@ def make_obs(gamestate, max_projectiles=5):
             p.speed_ground_x_self,
             p.speed_x_attack,
             p.speed_y_attack,
-            p.speed_y_self,
+            p.speed_y_self
         ]
 
     # get player slots 1 & 2
@@ -101,8 +101,8 @@ def make_obs_simple(gamestate):
     # 1) Player features extractor (17 floats each)
     def player_feats(p):
         return [
-            #float(p.stock),
-            #float(p.percent),
+            # float(p.stock),
+            # float(p.percent),
             p.position.x,
             p.position.y,
             # float(p.character.value),
