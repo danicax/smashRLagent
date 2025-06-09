@@ -258,7 +258,7 @@ for _ in range(0,150):
         melee.Character.FALCO,
         melee.Stage.BATTLEFIELD,
         connect_code='',
-        cpu_level=9,
+        cpu_level=0,
         costume=costume,
         autostart=True,    # <-- start when both have been selected
         swag=False
@@ -275,28 +275,40 @@ def compute_reward(prev_gamestate, gamestate):
         return 0.0
 
     # Example: reward based on stock difference
-    player_stock = 0
-    enemy_stock = 0
+    # player_stock = 0
+    # enemy_stock = 0
 
-    if gamestate.players[1].stock < prev_gamestate.players[1].stock:
+    # if gamestate.players[1].stock < prev_gamestate.players[1].stock:
         
-        player_stock = (int(gamestate.players[1].stock) - int(prev_gamestate.players[1].stock)) * 10.0
-        #print("DEATH", player_stock)
-    if gamestate.players[2].stock < prev_gamestate.players[2].stock:
-        enemy_stock = -(int(gamestate.players[2].stock) - int(prev_gamestate.players[2].stock)) * 10.0
+    #     player_stock = (int(gamestate.players[1].stock) - int(prev_gamestate.players[1].stock)) * 10.0
+    #     #print("DEATH", player_stock)
+    # if gamestate.players[2].stock < prev_gamestate.players[2].stock:
+    #     enemy_stock = -(int(gamestate.players[2].stock) - int(prev_gamestate.players[2].stock)) * 10.0
 
-    player_hp = 0
-    enemy_hp = 0
+    # player_hp = 0
+    # enemy_hp = 0
 
-    if(player_stock == 0):
-        if gamestate.players[1].percent > prev_gamestate.players[1].percent:
-            player_hp = -(float(gamestate.players[1].percent) - float(prev_gamestate.players[1].percent)) * 0.1
-    if(enemy_stock == 0):
-        if gamestate.players[2].percent > prev_gamestate.players[2].percent:
-            enemy_hp = (float(gamestate.players[2].percent) - float(prev_gamestate.players[2].percent)) * 0.1
+    # if(player_stock == 0):
+    #     if gamestate.players[1].percent > prev_gamestate.players[1].percent:
+    #         player_hp = -(float(gamestate.players[1].percent) - float(prev_gamestate.players[1].percent)) * 0.1
+    # if(enemy_stock == 0):
+    #     if gamestate.players[2].percent > prev_gamestate.players[2].percent:
+    #         enemy_hp = (float(gamestate.players[2].percent) - float(prev_gamestate.players[2].percent)) * 0.1
 
 
-    reward = player_stock + enemy_stock + player_hp + enemy_hp
+    # reward = player_stock + enemy_stock + player_hp + enemy_hp
+
+    
+    p1 = gamestate.players[1]
+    p2 = gamestate.players[2]
+
+    dx = float(p1.position.x) - float(p2.position.x)
+    dy = float(p1.position.y) - float(p2.position.y)
+    dist = (dx ** 2 + dy ** 2) ** 0.5
+    reward = 1.0 / (dist + 1.0)
+    print(reward)
+
+    reward = 0.0
     
     # if reward<0:
     #     print("Reward: ", reward, "Player Stock: ", player_stock, "Enemy Stock: ", enemy_stock, "Player HP: ", player_hp, "Enemy HP: ", enemy_hp)
@@ -370,7 +382,7 @@ while True:
                 target_q.load_state_dict(q_net.state_dict())
             if count%num_train==0:
                 num_games +=1
-                torch.save(q_net.state_dict(), f"trained_double_qnet_{num_games}.pth")
+                torch.save(q_net.state_dict(), f"trained_double_qnet_simple_{num_games}.pth")
 
         # exploration/exploitation
 

@@ -59,6 +59,79 @@ def make_obs(gamestate, max_projectiles=5):
     all_feats = f1 + f2 + stage_feat + proj_feats
     return torch.tensor(all_feats, dtype=torch.float32)
 
+# def make_obs_simple(gamestate):
+#     # 1) Player features extractor (17 floats each)
+#     def player_feats(p):
+#         return [
+#             # float(p.stock),
+#             # float(p.percent),
+#             p.position.x,
+#             p.position.y,
+#             # float(p.character.value),
+#             # float(p.action.value),
+#             # float(p.action_frame),
+#             # float(p.facing),
+#             # float(p.shield_strength),
+#             # float(p.jumps_left),
+#             # float(p.on_ground),
+#             # float(p.invulnerable),
+#             # p.speed_air_x_self,
+#             # p.speed_ground_x_self,
+#             # p.speed_x_attack,
+#             # p.speed_y_attack,
+#             # p.speed_y_self,
+#         ]
+
+#     # get player slots 1 & 2
+#     ps = gamestate.players
+#     f1 = player_feats(ps.get(1)) if 1 in ps else [0.0]*2
+#     f2 = player_feats(ps.get(2)) if 2 in ps else [0.0]*2 #we dont want player2 data right?
+#     #f2 = [float(gamestate.players.get(2).character.value)]
+
+#     # 2) Stage as one float
+#     stage_feat = [float(gamestate.stage.value)]
+
+
+#     all_feats = f1 + f2 + stage_feat
+#     return torch.tensor(all_feats, dtype=torch.float32)
+
+
+def make_obs_simple(gamestate):
+    # 1) Player features extractor (17 floats each)
+    def player_feats(p):
+        return [
+            #float(p.stock),
+            #float(p.percent),
+            p.position.x,
+            p.position.y,
+            # float(p.character.value),
+            # float(p.action.value),
+            #float(p.action_frame),
+            # float(p.facing),
+            # float(p.shield_strength),
+            # float(p.jumps_left),
+            # float(p.on_ground),
+            # float(p.invulnerable),
+            # p.speed_air_x_self,
+            # p.speed_ground_x_self,
+            # p.speed_x_attack,
+            # p.speed_y_attack,
+            # p.speed_y_self,
+        ]
+
+    # get player slots 1 & 2
+    ps = gamestate.players
+    f1 = player_feats(ps.get(1)) if 1 in ps else [0.0]*2
+    f2 = player_feats(ps.get(2)) if 2 in ps else [0.0]*2 #we dont want player2 data right?
+    #f2 = [float(gamestate.players.get(2).character.value)]
+
+    # 2) Stage as one float
+    #stage_feat = [float(gamestate.stage.value)]
+
+
+    all_feats = f1 + f2# + stage_feat
+    return torch.tensor(all_feats, dtype=torch.float32)
+
 def get_controller_state(controller_state):
     # get the controller state
     
@@ -84,3 +157,4 @@ def get_controller_state(controller_state):
             controller_state.r_shoulder
         ], dtype=torch.float32)
     return act
+
