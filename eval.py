@@ -12,15 +12,11 @@ import torch.nn.functional as F
 from torch.distributions import Categorical
 import argparse
 import signal
-from util import make_obs, make_obs_simple, min_dist_reward, stay_alive_reward
-# from PolicyNet import PolicyNet
-# from QNet import QNet
-# from PolicyNet import PolicyNet
-from Agents.BCAgent import BCAgent
-from Agents.IQLAgent import IQLAgent
-from Agents.PPOAgent import PPOAgentSimple
+from util import make_obs, make_obs_simple, min_dist_reward, stay_alive_reward, unpack_and_send, unpack_and_send_simple, connect_to_console, menu_helper, hit_and_death_detection
+from PPOAgentFull import PPOAgentFull
 import time
-from torch.distributions import Bernoulli, Normal
+import numpy as np
+from Agents.IQLAgent import IQLAgent
 
 """
    act = torch.tensor([
@@ -46,69 +42,6 @@ from torch.distributions import Bernoulli, Normal
 """
 
 
-
-
-def unpack_and_send(controller, action_tensor):
-    """
-    action_tensor: FloatTensor of shape [act_dim] in the same order you trained on:
-      [A, B, D_DOWN, D_LEFT, D_RIGHT, D_UP,
-       L, R, X, Y, Z, START,
-       main_x, main_y, c_x, c_y, raw_x, raw_y, l_shldr, r_shldr]
-    """
-    # First, clear last frame’s inputs
-    #controller.release_all()
-
-    # Booleans
-    # print("ACTION",action_tensor)
-    btns = [
-        melee.enums.Button.BUTTON_A, melee.enums.Button.BUTTON_B, melee.enums.Button.BUTTON_D_DOWN,
-        melee.enums.Button.BUTTON_D_LEFT, melee.enums.Button.BUTTON_D_RIGHT,melee.enums. Button.BUTTON_D_UP,
-        melee.enums.Button.BUTTON_L, melee.enums.Button.BUTTON_R, melee.enums.Button.BUTTON_X,
-        melee.enums.Button.BUTTON_Y, melee.enums.Button.BUTTON_Z #, melee.enums.Button.BUTTON_START
-    ]
-
-    #Analog sticks
-    main_x, main_y = action_tensor[11].item(), action_tensor[12].item()
-    c_x,    c_y    = action_tensor[13].item(), action_tensor[14].item()
-    l_shoulder,    r_shoulder    = action_tensor[15].item(), action_tensor[16].item()
-
-    controller.tilt_analog(melee.enums.Button.BUTTON_MAIN, main_x, main_y)
-    controller.tilt_analog(melee.enums.Button.BUTTON_C,    c_x,    c_y)
-    controller.press_shoulder(melee.enums.Button.BUTTON_L, l_shoulder)
-    controller.press_shoulder(melee.enums.Button.BUTTON_R, r_shoulder)
-    
-    for i, b in enumerate(btns):
-        if action_tensor[i].item() >0.5:
-            controller.press_button(b)
-
-
-# def unpack_and_send(controller, action_tensor):
-#     """
-#     action_tensor: FloatTensor of shape [2] for main stick [x, y]
-#     """
-#     controller.release_all()
-#     main_x, main_y = action_tensor[0].item(), action_tensor[1].item()
-#     controller.tilt_analog(melee.enums.Button.BUTTON_MAIN, main_x, main_y)
-
-
-
-
-
-
-
-# Load the trained model
-
-# agent = BCAgent(obs_dim=70, act_dim=17)
-# # agent = BCAgent(obs_dim=72, act_dim=17)
-# # model = PolicyNet(obs_dim=70, act_dim=17)
-# state_dict = torch.load("fox_5.pth", map_location="cpu")
-# agent.policy_net.load_state_dict(state_dict)
-# agent.policy_net.eval()
-# agent = BCAgent(obs_dim=70, act_dim=17)
-# # model = PolicyNet(obs_dim=70, act_dim=17)
-# state_dict = torch.load("trained_PPO_12.pth", map_location="cpu")
-# agent.policy_net.load_state_dict(state_dict)
-# agent.policy_net.eval()
 
 def check_port(value):
     ivalue = int(value)
@@ -142,77 +75,28 @@ args = parser.parse_args()
 
 
 
-def main(model_path):
-    # No logging since these are vanilla CPUs
-    console = melee.Console(path=args.dolphin_executable_path,
-                            slippi_address=args.address,
-                            logger=None)
-
-    # Two virtual controllers
-    controller1 = melee.Controller(console=console,
-                                port=args.port1,
-                                type=melee.ControllerType.STANDARD)
-    controller2 = melee.Controller(console=console,
-                                port=args.port2,
-                                type=melee.ControllerType.STANDARD)
-
-
-    def signal_handler(sig, frame):
-        console.stop()
-        print("Shutting down cleanly…")
-        sys.exit(0)
-
-    signal.signal(signal.SIGINT, signal_handler)
-
-    # Launch Dolphin + ISO
-    console.run(iso_path=args.iso)
-
-    print("Connecting to console…")
-    if not console.connect():
-        print("ERROR: Failed to connect to the console.")
-        sys.exit(-1)
-    print("Console connected")
-
-    # Plug in BOTH controllers
-    print(f"Connecting controller on port {args.port1}…")
-    if not controller1.connect():
-        print("ERROR: Failed to connect controller1.")
-        sys.exit(-1)
-    print("Controller1 connected")
-
-    print(f"Connecting controller on port {args.port2}…")
-    if not controller2.connect():
-        print("ERROR: Failed to connect controller2.")
-        sys.exit(-1)
-    print("Controller2 connected")
-
+def main(model_path, experiment_name):
+    console, controller1, controller2 = connect_to_console(args)
     costume = 0
 
-
-    # agent = PPOAgentSimple(obs_dim=5)
+    # agent = PPOAgentFull(obs_dim=4, act_dim=2, hidden_dim=64, max_steps_per_episode=1800, console_arguments=args, gamma=0.99, updates_per_episode=10, device='cpu', experiment_name="eval")
+    # agent.load_checkpoint(model_path)
     agent = IQLAgent(obs_dim=70, act_dim=17)
     state_dict = torch.load(model_path, map_location="cpu")
-    # agent.load_state_dict(state_dict)
-    # agent.eval()
     agent.policy.load_state_dict(state_dict)
     agent.policy.eval()
-        
-    def policy(obs):
-        with torch.no_grad():
-            out = agent(obs.unsqueeze(0))  # Add batch dimension
-            logits_x = out['logits_x'].squeeze(0)  
-            logits_y = out['logits_y'].squeeze(0) 
-            dist_x = Categorical(logits=logits_x)
-            dist_y = Categorical(logits=logits_y)
-            choices = torch.tensor([0.0, 0.5, 1.0]) 
-            idx_x = dist_x.sample()  # 0, 1, or 2
-            idx_y = dist_y.sample()  # 0, 1, or 2
-            return torch.stack([choices[idx_x], choices[idx_y]])
 
     in_game_frame_count = 0
     total_reward = 0
 
+    prev_gamestate = None
+    gamestate = None
+
+    time_to_hit = np.inf
+    time_to_death = np.inf
+
     while True:
+        prev_gamestate = gamestate
         gamestate = console.step()
         if gamestate is None:
             continue
@@ -221,54 +105,44 @@ def main(model_path):
         if gamestate.menu_state in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
             # obs = make_obs_simple(gamestate)
             obs = make_obs(gamestate)
-            # reward = min_dist_reward(gamestate)
+            # reward = min_dist_reward(prev_gamestate, gamestate)
+            # reward = stay_alive_reward(prev_gamestate, gamestate)
+            reward = min_dist_reward(prev_gamestate, gamestate)
+            # result = hit_and_death_detection(prev_gamestate, gamestate)
+            # if "hit" in result:
+                # time_to_hit = min(time_to_hit, in_game_frame_count)
+            # if "death" in result:
+                # time_to_death = min(time_to_death, in_game_frame_count)
             # reward = agent.reward_function(obs.unsqueeze(0), None, None).item()
-            # print(reward)
-            # total_reward += reward
+            total_reward += reward
             # act = policy(obs)
             act = agent.predict(obs)
             in_game_frame_count += 1
+            # unpack_and_send_simple(controller1,act)
             unpack_and_send(controller1,act)
-            if in_game_frame_count > 3000:
-                # with open(args.log_path, 'a+') as f:
-                    # f.write(f"{model_path} Total reward: {total_reward}\n")
+            if in_game_frame_count > 3600:
+                with open(f'eval_logs/{experiment_name}.txt', 'a+') as f:
+                    # f.write(f"{model_path} Total reward: {total_reward} Time to hit: {time_to_hit} Time to death: {time_to_death}\n")
+                    f.write(f"{model_path} Total reward: {total_reward}\n")
                 console.stop()
-                break
+                return
             continue
 
 
         # In the menus, select both CPUs and then autostart on the second
-        melee.MenuHelper.menu_helper_simple(
-            gamestate,
-            controller1,
-            melee.Character.FOX,
-            melee.Stage.FINAL_DESTINATION,
-            connect_code='',
-            cpu_level=0,
-            costume=costume,
-            autostart=True,
-            swag=False
-        )
-        melee.MenuHelper.menu_helper_simple(
-            gamestate,
-            controller2,
-            melee.Character.FALCO,
-            melee.Stage.FINAL_DESTINATION,
-            connect_code='',
-            cpu_level=0,
-            costume=costume,
-            autostart=True,    # <-- start when both have been selected
-            swag=False
-        )
+        menu_helper(gamestate, controller1, controller2)
         continue
 
 
+experiment_name = "bc_min_dist"
 # model_paths = glob.glob("checkpoints/iql_min_dist_expectile_0.8_*.pth")
-# model_paths = sorted(model_paths, key=lambda x: int(x.split('_')[-1].split('.')[0]))
+model_paths = glob.glob(r"checkpoints/bc_*.pth")
+model_paths = sorted(model_paths, key=lambda x: int(x.split('_')[-1].split('.')[0]))
+print(model_paths)
 
-# for model_path in model_paths[-1:]:
-#     for i in range(3):
-#         main(model_path)
-#         time.sleep(2)
+for model_path in model_paths[:]:
+    for i in range(3):
+        main(model_path, experiment_name)
+        time.sleep(5)
 
-main(model_path="iql_5.pth")
+# main(model_path="iql_5.pth")

@@ -359,8 +359,51 @@ def menu_helper(gamestate, controller1, controller2):
         melee.Character.FALCO,
         melee.Stage.BATTLEFIELD,
         connect_code='',
-        cpu_level=9,
+        cpu_level=0,
         costume=0,
         autostart=True,
         swag=False
     )
+
+def min_dist_reward(prev_gamestate, gamestate):
+    # Compute the reward based on the game state
+    # For now, just return a dummy reward
+    if prev_gamestate is None or gamestate is None:
+        return 0.0
+
+    p1 = gamestate.players[1]
+    p2 = gamestate.players[2]
+
+    dx = float(p1.position.x) - float(p2.position.x)
+    dy = float(p1.position.y) - float(p2.position.y)
+    dist = (dx ** 2 + dy ** 2) ** 0.5
+    reward = 1.0 / (dist + 1.0)
+
+    return reward
+
+def stay_alive_reward(prev_gamestate, gamestate):
+    if gamestate is None or prev_gamestate is None:
+        return 0.0
+    
+    if gamestate.menu_state not in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH] or prev_gamestate.menu_state not in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
+        return 0.0
+    
+    p1 = gamestate.players[1]
+    
+    if p1.off_stage:
+        return -100
+    
+    if gamestate.players[1].percent > prev_gamestate.players[1].percent:
+        return -(gamestate.players[1].percent - prev_gamestate.players[1].percent)
+
+    return 0
+
+def hit_and_death_detection(prev_gamestate, gamestate):
+    result = []
+    if gamestate.players[1].stock < prev_gamestate.players[1].stock:
+        result.append("death")
+    
+    if gamestate.players[1].percent > prev_gamestate.players[1].percent:
+        result.append("hit")
+    
+    return result

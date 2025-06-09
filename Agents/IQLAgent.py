@@ -29,9 +29,9 @@ class IQLAgent(Agent):
         ).to(device)
         self.policy = PolicyNet(obs_dim, act_dim).to(device)
 
-        self.policy_optimizer = optim.Adam(self.policy.parameters(), lr=0.0005, weight_decay=0.001)
-        self.Qoptimizer = optim.Adam(self.Qnet.parameters(), lr=0.0005, weight_decay=0.001)
-        self.Voptimizer = optim.Adam(self.Vnet.parameters(), lr=0.0005, weight_decay=0.001)
+        self.policy_optimizer = optim.Adam(self.policy.parameters(), lr=0.0003, weight_decay=0.001)
+        self.Qoptimizer = optim.Adam(self.Qnet.parameters(), lr=0.0003, weight_decay=0.001)
+        self.Voptimizer = optim.Adam(self.Vnet.parameters(), lr=0.0003, weight_decay=0.001)
 
         self.gamma = gamma
         self.iql_expectile = iql_expectile
@@ -47,7 +47,6 @@ class IQLAgent(Agent):
     #     p2_y = states[:, 20]
     #     dist = torch.sqrt((p1_x - p2_x)**2 + (p1_y - p2_y)**2)
     #     return 1 / (dist + 1)
-
 
 
     # def compute_reward(prev_gamestate, gamestate):

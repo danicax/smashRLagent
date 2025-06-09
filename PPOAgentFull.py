@@ -130,6 +130,10 @@ class PPOAgentFull():
             log_prob = dist.log_prob(action).sum(dim=-1)
         return action, log_prob
     
+
+    def predict(self, obs):
+        return self.get_action(obs.to(self.device))[0]
+
     def rollout(self):
         console, controller1, controller2 = connect_to_console(self.args)
         
