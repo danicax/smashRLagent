@@ -177,23 +177,23 @@ def policy(obs):
         action = ACTIONS[action_idx]  # ACTIONS should be defined as in your training script
         return action
 
-def compute_reward(gamestate):
-    # Compute the reward based on the game state
-    # For now, just return a dummy reward
-    if gamestate is None:
-        return 0.0
+# def compute_reward(gamestate):
+#     # Compute the reward based on the game state
+#     # For now, just return a dummy reward
+#     if gamestate is None:
+#         return 0.0
 
-    p1 = gamestate.players[1]
-    p2 = gamestate.players[2]
+#     p1 = gamestate.players[1]
+#     p2 = gamestate.players[2]
 
-    dx = float(p1.position.x) - float(p2.position.x)
-    dy = float(p1.position.y) - float(p2.position.y)
-    dist = (dx ** 2 + dy ** 2) ** 0.5
-    reward = 1.0 / (dist + 1.0)
+#     dx = float(p1.position.x) - float(p2.position.x)
+#     dy = float(p1.position.y) - float(p2.position.y)
+#     dist = (dx ** 2 + dy ** 2) ** 0.5
+#     reward = 1.0 / (dist + 1.0)
     
-    # if reward<0:
-    #     print("Reward: ", reward, "Player Stock: ", player_stock, "Enemy Stock: ", enemy_stock, "Player HP: ", player_hp, "Enemy HP: ", enemy_hp)
-    return reward
+#     # if reward<0:
+#     #     print("Reward: ", reward, "Player Stock: ", player_stock, "Enemy Stock: ", enemy_stock, "Player HP: ", player_hp, "Enemy HP: ", enemy_hp)
+#     return reward
 
 # agent = BCAgent(obs_dim=70, act_dim=17)
 # # model = PolicyNet(obs_dim=70, act_dim=17)
@@ -308,28 +308,28 @@ for _ in range(0,150):
         melee.Character.FALCO,
         melee.Stage.BATTLEFIELD,
         connect_code='',
-        cpu_level=0,
+        cpu_level=9,
         costume=costume,
         autostart=True,    # <-- start when both have been selected
         swag=False
     )
 
-# def compute_reward(prev_gamestate, gamestate):
-#     if gamestate is None:
-#         return None
+def compute_reward(prev_gamestate, gamestate):
+    if gamestate is None:
+        return None
     
-#     if gamestate.menu_state not in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
-#         return None
+    if gamestate.menu_state not in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
+        return None
     
-#     p1 = gamestate.players[1]
+    p1 = gamestate.players[1]
     
-#     if gamestate.players[1].stock < prev_gamestate.players[1].stock:
-#         return "off_stage"
+    if gamestate.players[1].stock < prev_gamestate.players[1].stock:
+        return "off_stage"
     
-#     if gamestate.players[1].percent > prev_gamestate.players[1].percent:
-#         return "hit"
+    if gamestate.players[1].percent > prev_gamestate.players[1].percent:
+        return "hit"
 
-#     return None
+    return None
 
 hit_time = None
 death_time = None
@@ -348,29 +348,33 @@ while True:
         obs = make_obs_simple(gamestate)
         #act = agent.predict(obs)
         #if prev_gamestate is not None and gamestate is not None:
-        reward = compute_reward(gamestate)
-        total_reward += reward
-        # if reward is not None:
-        #     if reward == "off_stage" and death_time is None:
-        #         death_time = fc
-        #     elif reward == "hit" and hit_time is None:
-        #         hit_time = fc
-        #     if hit_time is not None and death_time is not None:
-        #         #print(curr_model, f"Hit at frame {hit_time}, death at frame {death_time})")
-        #         result_str = f"{curr_model} Hit at frame {hit_time}, death at frame {death_time})\n"
-        #         print(result_str.strip())
+        #reward = compute_reward(gamestate)
+        reward = compute_reward(prev_gamestate, gamestate)
+        #total_reward += reward
+        if reward is not None:
+            if reward == "off_stage" and death_time is None:
+                death_time = fc
+            elif reward == "hit" and hit_time is None:
+                hit_time = fc
+            if hit_time is not None and death_time is not None:
+                #print(curr_model, f"Hit at frame {hit_time}, death at frame {death_time})")
+                result_str = f"{curr_model} Hit at frame {hit_time}, death at frame {death_time})\n"
+                print(result_str.strip())
 
-        #         with open(base_path, "a") as f:
-        #             f.write(result_str)
-        if fc >=lim:
-            result_str = f"{curr_model} Total reward {total_reward})\n"
-            print(result_str.strip())
+                with open(base_path, "a") as f:
+                    f.write(result_str)
+                console.stop()
+                sys.exit(0)
+                break
+        # if fc >=lim:
+        #     result_str = f"{curr_model} Total reward {total_reward})\n"
+        #     print(result_str.strip())
 
-            with open(base_path, "a") as f:
-                f.write(result_str)
-            console.stop()
-            sys.exit(0)
-            break
+        #     with open(base_path, "a") as f:
+        #         f.write(result_str)
+        #     console.stop()
+        #     sys.exit(0)
+        #     break
         act = policy(obs)
         unpack_and_send(controller1,act)
        
@@ -394,7 +398,7 @@ while True:
         melee.Character.FALCO,
         melee.Stage.BATTLEFIELD,
         connect_code='',
-        cpu_level=5,
+        cpu_level=9,
         costume=costume,
         autostart=True,    # <-- start when both have been selected
         swag=False

@@ -1,4 +1,4 @@
-for ((i = 1; i<=301;i+=3))
+for ((i = 1; i<=501;i+=10))
 do
     MODEL_PATH="D:\cs224rPython\PPO_hard_XL_everything\FINAL_PPO_simple_stay_alive_${i}.pth"
     
@@ -7,6 +7,7 @@ do
         break
     fi
     python eval_all.py -e="D:\FM-Slippi-2.3.1-Win" --iso="D:\cs224rPython\SmashIso.nkit.iso" --model="$MODEL_PATH"
+    sleep 1
     python eval_all.py -e="D:\FM-Slippi-2.3.1-Win" --iso="D:\cs224rPython\SmashIso.nkit.iso" --model="$MODEL_PATH"
     sleep 1
 done

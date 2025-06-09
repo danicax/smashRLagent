@@ -19,7 +19,7 @@ import math
 
 from torch.distributions import Bernoulli, Normal
 
-save_dir = "Double_DQN_Min_Dist_Simple_Simple"
+save_dir = "DQN_Stay_Alive_Simple_Simple"
 os.makedirs(save_dir, exist_ok=True)
 
 move_inputs = [
@@ -168,7 +168,7 @@ for _ in range(0,150):
         melee.Character.FALCO,
         melee.Stage.BATTLEFIELD,
         connect_code='',
-        cpu_level=0,
+        cpu_level=9,
         costume=costume,
         autostart=True,    # <-- start when both have been selected
         swag=False
@@ -178,25 +178,25 @@ prev_gamestate = None
 prev_state = None
 action_idx = random.randrange(N_ACTIONS)
 
-def compute_reward(gamestate):
-    # Compute the reward based on the game state
-    # For now, just return a dummy reward
-    if prev_gamestate is None or gamestate is None:
-        return 0.0
+# def compute_reward(gamestate):
+#     # Compute the reward based on the game state
+#     # For now, just return a dummy reward
+#     if prev_gamestate is None or gamestate is None:
+#         return 0.0
 
-    p1 = gamestate.players[1]
-    p2 = gamestate.players[2]
+#     p1 = gamestate.players[1]
+#     p2 = gamestate.players[2]
 
-    dx = float(p1.position.x) - float(p2.position.x)
-    dy = float(p1.position.y) - float(p2.position.y)
-    dist = (dx ** 2 + dy ** 2) ** 0.5
-    reward = 1.0 / (dist + 1.0)
+#     dx = float(p1.position.x) - float(p2.position.x)
+#     dy = float(p1.position.y) - float(p2.position.y)
+#     dist = (dx ** 2 + dy ** 2) ** 0.5
+#     reward = 1.0 / (dist + 1.0)
     
-    if p1.off_stage:
-        return -100
-    # if reward<0:
-    #     print("Reward: ", reward, "Player Stock: ", player_stock, "Enemy Stock: ", enemy_stock, "Player HP: ", player_hp, "Enemy HP: ", enemy_hp)
-    return reward
+#     if p1.off_stage:
+#         return -100
+#     # if reward<0:
+#     #     print("Reward: ", reward, "Player Stock: ", player_stock, "Enemy Stock: ", enemy_stock, "Player HP: ", player_hp, "Enemy HP: ", enemy_hp)
+#     return reward
 
 # def compute_reward(gamestate):
 #     if gamestate is None:
@@ -212,6 +212,23 @@ def compute_reward(gamestate):
 #     reward = stock*100-percent
 
 #     return reward*0.001
+
+def compute_reward(prev_gamestate, gamestate):
+    if gamestate is None:
+        return 0.0
+    
+    if gamestate.menu_state not in [melee.Menu.IN_GAME, melee.Menu.SUDDEN_DEATH]:
+        return 0.0
+    
+    p1 = gamestate.players[1]
+    
+    if p1.off_stage:
+        return -100
+    
+    if gamestate.players[1].percent > prev_gamestate.players[1].percent:
+        return -(gamestate.players[1].percent - prev_gamestate.players[1].percent)
+
+    return 0
 
 count = 0
 num_games = 0
@@ -239,8 +256,8 @@ while True:
         if prev_gamestate is None or prev_state is None:
             continue
         state = make_obs(gamestate)
-        #reward = compute_reward(prev_gamestate, gamestate)
-        reward = compute_reward(gamestate)
+        reward = compute_reward(prev_gamestate, gamestate)
+        #reward = compute_reward(gamestate)
         total_reward += reward
         
         
@@ -256,16 +273,16 @@ while True:
 
             # Compute the target Q-values
             with torch.no_grad():
-                #target_q_values = target_q(next_states).max(1)[0]
-                #target_q_values = rewards + gamma * target_q_values
+                target_q_values = target_q(next_states).max(1)[0]
+                target_q_values = rewards + gamma * target_q_values
             #with double DQN
-                best_next_a    = q_net(next_states).argmax(dim=1, keepdim=True)  # [B,1]
+                # best_next_a    = q_net(next_states).argmax(dim=1, keepdim=True)  # [B,1]
 
-                # 2) target network evaluates that action
-                next_q_target  = target_q(next_states).gather(1, best_next_a).squeeze(1)  # [B]
+                # # 2) target network evaluates that action
+                # next_q_target  = target_q(next_states).gather(1, best_next_a).squeeze(1)  # [B]
 
-                # 3) form the Double-DQN target
-                target_q_values = rewards + (1-dones)*gamma * next_q_target
+                # # 3) form the Double-DQN target
+                # target_q_values = rewards + (1-dones)*gamma * next_q_target
 
             # Compute the current Q-values
             q_values = q_net(states).gather(1, actions.unsqueeze(1)).squeeze(1)

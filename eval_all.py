@@ -287,7 +287,7 @@ def compute_reward(prev_gamestate, gamestate, frame_count):
             enemy_hp = (float(gamestate.players[2].percent) - float(prev_gamestate.players[2].percent)) * 0.001
             if res_map["time_hitting_enemy_first"] is None: 
                 res_map["time_hitting_enemy_first"] = frame_count
-            res_map["total_dmg_taken"] += enemy_hp
+            res_map["total_dmg_dealt"] += enemy_hp
 
     return;
 # def compute_reward(gamestate):
@@ -393,17 +393,6 @@ print("Controller2 connected")
 
 prev_gamestate = None
 
-res_map = {
-    "total_dmg_dealt": None,
-    "total_dmg_taken": None,
-    "total_deaths": None,
-    "total_kills": None,
-    "time_getting_hit_first":None,
-    "time_hitting_enemy_first":None,
-    "time_death_first":None,
-    "time_killing_enemy_first":None,
-    "time_survived":None
-    }
 costume = 0
 for _ in range(0,150):
     gamestate = console.step()
@@ -471,7 +460,7 @@ while True:
         obs = make_obs(gamestate)
         #act = agent.predict(obs)
         #if prev_gamestate is not None and gamestate is not None:
-        #reward = compute_reward(prev_gamestate,gamestate,fc)
+        compute_reward(prev_gamestate,gamestate,fc)
         #total_reward += reward
         # if reward is not None:
         #     if reward == "off_stage" and death_time is None:

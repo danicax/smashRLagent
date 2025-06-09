@@ -19,8 +19,8 @@ from util import make_obs as make_obs
 GAMMA       = 0.995
 LAMBDA      = 0.95
 CLIP_EPS    = 0.2
-LR_ACTOR    = 1e-7
-LR_CRITIC   = 1e-7
+LR_ACTOR    = 1e-6
+LR_CRITIC   = 1e-5
 ROLLOUT_LEN = 1024
 UPDATE_EPOCHS = 4
 MINI_BATCH  = 64
@@ -146,7 +146,9 @@ def ppo_update(agent, buf, opt_act, opt_crit, update_count):
             # backward + clip + step
             opt_act.zero_grad()
             opt_crit.zero_grad()
-            (loss_a + loss_c).backward()
+            loss_a.backward(retain_graph=True)
+            loss_c.backward()
+            torch.nn.utils.clip_grad_norm_(agent.parameters(), MAX_GRAD_NORM)
             opt_act.step()
             opt_crit.step()
 
